@@ -1,0 +1,23 @@
+schema: spec-driven
+
+context: |
+  Project: stammbaum
+  This project uses a clarification gate before implementation.
+  Behavior changes follow test-driven development: red, green, refactor.
+  Prefer KISS and YAGNI. Apply SOLID when it removes real coupling or clarifies a tested boundary.
+  Keep code structured, explicit, and concise.
+  Every requirement scenario should map to an executable test.
+
+rules:
+  proposal:
+    - State the user outcome, scope, non-goals, constraints, and acceptance criteria.
+    - Record assumptions and unresolved questions; do not hide ambiguity.
+  specs:
+    - Use concrete Given/When/Then scenarios, including failure and edge behavior.
+    - Keep requirements testable and free of implementation detail.
+  design:
+    - Prefer existing project patterns and the smallest design that satisfies the specs.
+    - Justify new dependencies, abstractions, or public interfaces.
+  tasks:
+    - Put the failing test before the implementation task.
+    - Name the verification command or observable check for each behavior task.

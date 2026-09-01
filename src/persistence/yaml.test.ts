@@ -1,0 +1,163 @@
+import { describe, expect, it } from 'vitest'
+
+import { parseFamilyTreeYaml, serializeFamilyTreeYaml } from './yaml'
+import type { FamilyTreeDocument } from '../domain/types'
+
+const documentFixture: FamilyTreeDocument = {
+  schemaVersion: 1,
+  persons: [
+    {
+      id: 'woman-1',
+      firstName: 'Anna',
+      lastName: 'Weber',
+      gender: 'woman',
+      birthYear: 1834,
+      deathYear: 1901,
+      position: { x: 120, y: 80 },
+      comment: 'Unsichere Zuordnung.',
+    },
+    {
+      id: 'man-1',
+      firstName: 'Johann',
+      lastName: 'Weber',
+      gender: 'man',
+      birthYear: 1830,
+      deathYear: null,
+      position: { x: 320, y: 80 },
+      comment: null,
+    },
+    {
+      id: 'child-1',
+      firstName: 'Sven',
+      lastName: 'Weber',
+      gender: 'man',
+      birthYear: 1963,
+      deathYear: null,
+      position: { x: 220, y: 260 },
+      comment: null,
+    },
+  ],
+  relationships: [
+    {
+      id: 'marriage-1',
+      type: 'marriage',
+      fromId: 'woman-1',
+      toId: 'man-1',
+      status: 'explicit',
+      sourceUrl: 'https://example.org/register/28',
+      comment: 'Standesamtliche Quelle.',
+      inferredFrom: null,
+    },
+    {
+      id: 'parent-child-1',
+      type: 'parent-child',
+      fromId: 'man-1',
+      toId: 'child-1',
+      status: 'explicit',
+      sourceUrl: null,
+      comment: null,
+      inferredFrom: null,
+    },
+    {
+      id: 'parent-child-inferred-1',
+      type: 'parent-child',
+      fromId: 'woman-1',
+      toId: 'child-1',
+      status: 'inferred',
+      sourceUrl: null,
+      comment: 'Automatisch abgeleitet.',
+      inferredFrom: {
+        rule: 'spouse-parent',
+        sourceRelationshipId: 'parent-child-1',
+      },
+    },
+  ],
+}
+
+describe('family tree YAML persistence', () => {
+  it('round-trips the complete document including positions and relationship metadata', () => {
+    const yaml = serializeFamilyTreeYaml(documentFixture)
+    const result = parseFamilyTreeYaml(yaml)
+
+    expect(yaml).toContain('schemaVersion: 1')
+    expect(result).toEqual({ ok: true, value: documentFixture })
+  })
+
+  it('normalises whitespace-only comments during import', () => {
+    const source = serializeFamilyTreeYaml({
+      ...documentFixture,
+      persons: documentFixture.persons.map((person) => ({ ...person, comment: '  ' })),
+      relationships: documentFixture.relationships.map((relationship) => ({
+        ...relationship,
+        comment: '  ',
+      })),
+    })
+
+    const result = parseFamilyTreeYaml(source)
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.value.persons.every((person) => person.comment === null)).toBe(true)
+      expect(result.value.relationships.every((relationship) => relationship.comment === null)).toBe(
+        true,
+      )
+    }
+  })
+
+  it.each([
+    ['invalid syntax', 'schemaVersion: ['],
+    [
+      'unknown relationship reference',
+      `schemaVersion: 1
+persons: []
+relationships:
+  - id: relationship-1
+    type: parent-child
+    fromId: missing
+    toId: missing-child
+    status: explicit
+    sourceUrl: null`,
+    ],
+    [
+      'invalid source URL',
+      `schemaVersion: 1
+persons:
+  - id: woman-1
+    firstName: Anna
+    lastName: Weber
+    gender: woman
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: man-1
+    firstName: Johann
+    lastName: Weber
+    gender: man
+    birthYear: null
+    deathYear: null
+    position: null
+relationships:
+  - id: marriage-1
+    type: marriage
+    fromId: woman-1
+    toId: man-1
+    status: explicit
+    sourceUrl: ftp://example.org/source`,
+    ],
+  ])('rejects %s without returning partial data', (_description, yaml) => {
+    const result = parseFamilyTreeYaml(yaml)
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.message).toBeTruthy()
+    }
+  })
+
+  it('rejects unsupported schema versions', () => {
+    const yaml = serializeFamilyTreeYaml(documentFixture).replace('schemaVersion: 1', 'schemaVersion: 2')
+
+    const result = parseFamilyTreeYaml(yaml)
+
+    expect(result.ok).toBe(false)
+  })
+})
