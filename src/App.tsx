@@ -368,7 +368,7 @@ function App() {
               fitViewOptions={projection.fitViewOptions}
               nodesConnectable
               nodesDraggable={false}
-              panOnDrag={[1, 2]}
+              panOnDrag
               onNodeClick={(_event, node) => {
                 setIsCreatingPerson(false)
                 setConnectionDraft(null)

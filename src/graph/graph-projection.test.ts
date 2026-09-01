@@ -167,6 +167,85 @@ describe('family tree graph projection', () => {
     expect(spouse?.position).not.toEqual({ x: -900, y: -900 })
   })
 
+  it('aligns co-parents without requiring a marriage relationship', () => {
+    const document: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        {
+          id: 'grandparent',
+          firstName: 'Ernst',
+          lastName: 'Weber',
+          gender: 'man',
+          birthYear: 1870,
+          deathYear: null,
+          position: null,
+        },
+        {
+          id: 'parent-a',
+          firstName: 'Anna',
+          lastName: 'Weber',
+          gender: 'woman',
+          birthYear: 1900,
+          deathYear: null,
+          position: null,
+        },
+        {
+          id: 'parent-b',
+          firstName: 'Hans',
+          lastName: 'Meyer',
+          gender: 'man',
+          birthYear: 1898,
+          deathYear: null,
+          position: null,
+        },
+        {
+          id: 'child-c',
+          firstName: 'Lina',
+          lastName: 'Weber',
+          gender: 'woman',
+          birthYear: 1925,
+          deathYear: null,
+          position: null,
+        },
+      ],
+      relationships: [
+        {
+          id: 'grandparent-parent-a',
+          type: 'parent-child',
+          fromId: 'grandparent',
+          toId: 'parent-a',
+          status: 'explicit',
+          sourceUrl: null,
+        },
+        {
+          id: 'parent-a-child-c',
+          type: 'parent-child',
+          fromId: 'parent-a',
+          toId: 'child-c',
+          status: 'explicit',
+          sourceUrl: null,
+        },
+        {
+          id: 'parent-b-child-c',
+          type: 'parent-child',
+          fromId: 'parent-b',
+          toId: 'child-c',
+          status: 'explicit',
+          sourceUrl: null,
+        },
+      ],
+    }
+
+    const projection = projectFamilyTree(document)
+    const parentA = projection.nodes.find((node) => node.id === 'parent-a')
+    const parentB = projection.nodes.find((node) => node.id === 'parent-b')
+    const child = projection.nodes.find((node) => node.id === 'child-c')
+
+    expect(parentA?.position.y).toBe(parentB?.position.y)
+    expect(Math.abs((parentA?.position.x ?? 0) - (parentB?.position.x ?? 0))).toBeLessThan(220)
+    expect(child?.position.y).toBeGreaterThan(parentA?.position.y ?? 0)
+  })
+
   it('projects marriage and parent-child edge semantics and status styles', () => {
     const projection = projectFamilyTree(documentFixture, {
       type: 'relationship',

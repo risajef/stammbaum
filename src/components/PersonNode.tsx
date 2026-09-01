@@ -8,7 +8,7 @@ function PersonNode({ data, selected }: NodeProps<PersonGraphNode>) {
   const genderLabel = data.gender === 'woman' ? 'Frau' : data.gender === 'man' ? 'Mann' : 'Nicht angegeben'
 
   return (
-    <div className={`person-node${selected ? ' person-node--selected' : ''}`}>
+    <div className={`person-node nopan${selected ? ' person-node--selected' : ''}`}>
       <Handle className="person-handle" type="target" position={Position.Top} id="target-top" />
       <div className="person-node-header">
         <span className="person-node-glyph" aria-hidden="true">

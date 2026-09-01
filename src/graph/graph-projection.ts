@@ -92,6 +92,20 @@ const createFamilyComponents = (document: FamilyTreeDocument) => {
     }
   }
 
+  const parentsByChild = new Map<string, Set<string>>()
+  for (const relationship of document.relationships) {
+    if (relationship.type !== 'parent-child') continue
+
+    const parents = parentsByChild.get(relationship.toId) ?? new Set<string>()
+    parents.add(relationship.fromId)
+    parentsByChild.set(relationship.toId, parents)
+  }
+  for (const parentIds of parentsByChild.values()) {
+    const [firstParent, ...otherParents] = [...parentIds]
+    if (!firstParent) continue
+    otherParents.forEach((parentId) => union(firstParent, parentId))
+  }
+
   const membersByRoot = new Map<string, string[]>()
   document.persons.forEach((person) => {
     const root = findRoot(person.id)

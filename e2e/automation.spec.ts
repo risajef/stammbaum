@@ -99,6 +99,27 @@ test.describe('automatische Familienlogik', () => {
     expect(Math.abs(after.y - before.y)).toBeLessThan(2)
   })
 
+  test('laesst die Arbeitsflaeche per Drag verschieben', async ({ page }) => {
+    await page.goto('/')
+    await addPerson(page, 'Anna', 'Weber', 'woman')
+
+    const surface = page.locator('.flow-surface')
+    const surfaceBox = await surface.boundingBox()
+    const viewport = page.locator('.react-flow__viewport')
+    if (!surfaceBox) throw new Error('Arbeitsflaeche fehlt.')
+
+    const before = await viewport.evaluate((element) => getComputedStyle(element).transform)
+    const startX = surfaceBox.x + 48
+    const startY = surfaceBox.y + 48
+    await page.mouse.move(startX, startY)
+    await page.mouse.down()
+    await page.mouse.move(startX + 120, startY + 80, { steps: 10 })
+    await page.mouse.up()
+
+    await expect.poll(async () => viewport.evaluate((element) => getComputedStyle(element).transform))
+      .not.toBe(before)
+  })
+
   test('ergaenzt sichere inferred-Beziehungen nach dem Import', async ({ page }) => {
     await page.addInitScript(() => {
       Object.defineProperty(window, 'showOpenFilePicker', {
