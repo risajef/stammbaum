@@ -1,4 +1,5 @@
 import type { DomainError, FamilyTreeDocument, Relationship } from './types'
+import { comparePartialDates, isValidPartialDate } from './life-date'
 
 const error = (code: string, message: string, entityId?: string): DomainError => ({
   code,
@@ -37,7 +38,7 @@ export const validateFamilyTreeDocument = (
   document: FamilyTreeDocument,
 ): DomainError | null => {
   if (document.schemaVersion !== 1) {
-    return error('unsupported-schema-version', 'Die YAML-Schema-Version wird nicht unterstuetzt.')
+    return error('unsupported-schema-version', 'Die YAML-Schema-Version wird nicht unterstützt.')
   }
 
   const personIds = new Set<string>()
@@ -48,7 +49,7 @@ export const validateFamilyTreeDocument = (
     personIds.add(person.id)
 
     if (!person.firstName.trim() || !person.lastName.trim()) {
-      return error('invalid-person-name', 'Vor- und Nachname muessen ausgefuellt sein.', person.id)
+      return error('invalid-person-name', 'Vor- und Nachname müssen ausgefüllt sein.', person.id)
     }
 
     if (
@@ -59,21 +60,22 @@ export const validateFamilyTreeDocument = (
       return error('invalid-gender', 'Das Geschlecht muss Frau oder Mann sein.', person.id)
     }
 
-    if (
-      (person.birthYear !== null && !Number.isInteger(person.birthYear)) ||
-      (person.deathYear !== null && !Number.isInteger(person.deathYear))
-    ) {
-      return error('invalid-year', 'Lebensdaten muessen ganze Jahreszahlen sein.', person.id)
+    if (!isValidPartialDate(person.birthYear) || !isValidPartialDate(person.deathYear)) {
+      return error(
+        'invalid-date',
+        'Lebensdaten müssen im Format YYYY, YYYY-MM oder YYYY-MM-DD angegeben werden.',
+        person.id,
+      )
     }
 
     if (
       person.birthYear !== null &&
       person.deathYear !== null &&
-      person.deathYear < person.birthYear
+      comparePartialDates(person.deathYear, person.birthYear) === -1
     ) {
       return error(
         'invalid-life-span',
-        'Das Todesjahr darf nicht vor dem Geburtsjahr liegen.',
+        'Das Todesdatum darf nicht vor dem Geburtsdatum liegen.',
         person.id,
       )
     }
@@ -107,13 +109,40 @@ export const validateFamilyTreeDocument = (
     }
 
     if (relationship.status !== 'explicit' && relationship.status !== 'inferred') {
-      return error('invalid-status', 'Der Beziehungsstatus ist ungueltig.', relationship.id)
+      return error('invalid-status', 'Der Beziehungsstatus ist ungültig.', relationship.id)
+    }
+
+    if (relationship.type === 'marriage') {
+      if (!isValidPartialDate(relationship.startDate)) {
+        return error(
+          'invalid-date',
+          'Das Ehebeginn-Datum muss im Format YYYY, YYYY-MM oder YYYY-MM-DD angegeben werden.',
+          relationship.id,
+        )
+      }
+
+      if (relationship.startDate !== null && relationship.startDate !== undefined) {
+        for (const personId of [relationship.fromId, relationship.toId]) {
+          const deathDate = document.persons.find((person) => person.id === personId)?.deathYear
+          if (
+            deathDate !== null &&
+            deathDate !== undefined &&
+            comparePartialDates(deathDate, relationship.startDate) === -1
+          ) {
+            return error(
+              'invalid-marriage-span',
+              'Das Eheende darf nicht vor dem Ehebeginn liegen.',
+              relationship.id,
+            )
+          }
+        }
+      }
     }
 
     if (relationship.sourceUrl !== null && !isValidSourceUrl(relationship.sourceUrl)) {
       return error(
         'invalid-source-url',
-        'Die Quelle muss eine gueltige HTTP- oder HTTPS-URL sein.',
+        'Die Quelle muss eine gültige HTTP- oder HTTPS-URL sein.',
         relationship.id,
       )
     }
@@ -122,7 +151,7 @@ export const validateFamilyTreeDocument = (
       if (relationship.status !== 'inferred' || relationship.type !== 'parent-child') {
         return error(
           'invalid-inference',
-          'Automatische Beziehungen muessen geschlussfolgerte Eltern-Kind-Beziehungen sein.',
+          'Automatische Beziehungen müssen geschlussfolgerte Eltern-Kind-Beziehungen sein.',
           relationship.id,
         )
       }
@@ -140,7 +169,7 @@ export const validateFamilyTreeDocument = (
       ) {
         return error(
           'invalid-inference',
-          'Die automatische Herkunft der Beziehung ist ungueltig.',
+          'Die automatische Herkunft der Beziehung ist ungültig.',
           relationship.id,
         )
       }

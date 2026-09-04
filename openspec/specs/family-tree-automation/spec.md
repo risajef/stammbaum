@@ -8,27 +8,44 @@ Diese Capability ordnet einen Stammbaum automatisch als Familienstruktur an und 
 
 ### Requirement: Die Arbeitsflaeche ordnet Familien automatisch an
 
-Das System MUST die Position jeder Person aus dem aktuellen Dokument und seinen Beziehungen berechnen. Manuelles Verschieben von Personen MUST nicht moeglich sein. Ehepartner MUESSEN in derselben Generation horizontal nebeneinander liegen, Kinder MUESSEN unter ihren Eltern liegen und Geschwister MUESSEN auf derselben Hoehe nebeneinander liegen. Personen ohne Beziehungen MUESSEN eine deterministische Position erhalten.
+Das System MUST fuer jede Person eine deterministische Ausgangsposition aus dem aktuellen Dokument und seinen Beziehungen berechnen. Die Ausgangsanordnung MUSS kompakt und horizontal um die Mitte der Arbeitsflaeche zentriert sein. Gespeicherte oder importierte Personenpositionen duerfen die automatisch berechnete Ausgangsanordnung nicht bestimmen. Ehepartner MUESSEN als kompakter Block in derselben Generation horizontal nebeneinander liegen, Kinder MUESSEN als eigene, zentrierte Gruppe unter ihren Eltern liegen und Geschwister MUESSEN auf derselben Hoehe mit engem Abstand nebeneinander liegen. Mehrere Ehepartner einer Person MUESSEN in ihrer gemeinsamen Generation kompakt angeordnet werden, ohne die darunterliegenden Kindergenerationen in dieselbe Zeile zu ziehen. Die sichtbare Position darf waehrend der aktuellen Sitzung temporaer ueberschrieben werden, ohne Teil des fachlichen Dokuments zu werden. Nach einer erfolgreichen fachlichen Aenderung MUSS die Arbeitsflaeche die Ausgangspositionen aus dem neuen Dokument neu berechnen.
+
+#### Scenario: Familien werden kompakt und zentriert angeordnet
+
+- **GIVEN** ein Dokument enthaelt mehrere Personen mit Beziehungen und/oder unverbundene Personen
+- **WHEN** die Arbeitsflaeche erstmals angezeigt wird
+- **THEN** werden Ehepartner als benachbarte Gruppe auf gleicher Hoehe, Kinder unter ihren Eltern und Geschwister auf gleicher Hoehe angezeigt; die gesamte Ausgangsanordnung ist deterministisch, kompakt und horizontal um die Mitte zentriert
+
+#### Scenario: Gespeicherte Positionen werden fuer die Ausgangsanordnung ignoriert
+
+- **GIVEN** Personen enthalten unterschiedliche, auch weit auseinanderliegende Positionen im Dokument
+- **WHEN** die Arbeitsflaeche angezeigt wird
+- **THEN** bestimmt die automatische Familienanordnung die sichtbaren Ausgangspositionen unabhaengig von diesen gespeicherten Positionen
 
 #### Scenario: Ehepartner werden nebeneinander angeordnet
+
 - **GIVEN** zwei Personen sind durch eine Ehe verbunden
 - **WHEN** die Arbeitsflaeche angezeigt oder die Ehe gespeichert wird
 - **THEN** liegen beide Ehepartner auf derselben Hoehe und ihre horizontalen Abstaende sind kleiner als der Abstand zu einer nicht verbundenen Person derselben Generation
 
 #### Scenario: Kinder liegen unter den Eltern
+
 - **GIVEN** zwei Ehepartner haben ein gemeinsames Kind oder beide sind als Eltern mit demselben Kind verbunden
 - **WHEN** die Arbeitsflaeche angezeigt wird
 - **THEN** liegt das Kind unter der Hoehe beider Eltern und Geschwister teilen sich eine Hoehe
 
 #### Scenario: Manuelles Verschieben ist deaktiviert
+
 - **GIVEN** eine Person ist auf der Arbeitsflaeche sichtbar
-- **WHEN** die Benutzerin versucht, den Knoten zu ziehen
-- **THEN** aendert sich seine automatisch berechnete Position nicht durch diese Interaktion
+- **WHEN** die Benutzerin den Knoten zieht
+- **THEN** darf die sichtbare Position temporaer angepasst werden, aber dauerhaftes manuelles Layout sowie eine Aenderung des fachlichen Dokuments bleiben deaktiviert
 
 #### Scenario: Aenderungen berechnen das Layout neu
+
 - **GIVEN** Personen, Lebensdaten oder Beziehungen werden erfolgreich geaendert
 - **WHEN** die Arbeitsflaeche den neuen Dokumentzustand anzeigt
-- **THEN** werden Positionen und Generationen aus dem neuen Zustand neu berechnet und die Darstellung bleibt ohne manuelle Nacharbeit konsistent
+- **THEN** werden Positionen und Generationen aus dem neuen Zustand neu berechnet und die Darstellung bleibt ohne gespeicherte manuelle Layoutdaten konsistent
+
 
 ### Requirement: Ehebeziehungen sind symmetrische Paare
 
@@ -60,7 +77,7 @@ Das System MUST einen optionalen Kommentar an jeder Person und jeder Beziehung s
 
 ### Requirement: Sichere Elternschaften werden automatisch geschlussfolgert
 
-Das System MUST fuer eine Eltern-Kind-Beziehung A nach C die Ehepartner von A als moegliche weitere Eltern pruefen. Bei genau einem Ehepartner B MUST eine fehlende Beziehung B nach C automatisch mit `status: inferred` angelegt werden, auch wenn Todesdaten fehlen. Bei mehreren Ehepartnern DARF eine automatische Elternschaft nur angelegt werden, wenn das Geburtsjahr von C bekannt ist, jedes Todesjahr der Ehepartner bekannt ist und genau ein Ehepartner B die zeitliche Bedingung `deathYear >= birthYear(C)` erfuellt, waehrend alle anderen Ehepartner vor dem Geburtsjahr von C gestorben sind. Fehlt ein benoetigtes Todes- oder Geburtsjahr oder sind mehrere Ehepartner zeitlich moeglich, DARF keine automatische Elternschaft angelegt werden.
+Das System MUST fuer eine Eltern-Kind-Beziehung A nach C die Ehepartner von A als moegliche weitere Eltern pruefen. Bei genau einem Ehepartner B MUST eine fehlende Beziehung B nach C automatisch mit `status: inferred` angelegt werden, auch wenn Lebensdaten fehlen. Bei mehreren Ehepartnern MUSS das System bekannte Datumskomponenten von C und den Ehepartnern vergleichen: Ein Ehepartner, dessen Tod nachweisbar vor dem Geburtsdatum von C liegt, ist nicht zeitlich moeglich; fehlende Datumskomponenten bleiben unbekannt. Wenn nach diesem Vergleich genau ein Ehepartner zeitlich moeglich bleibt, DARF eine automatische Elternschaft angelegt werden. Sind kein Geburtsdatum von C vorhanden oder mehrere Ehepartner zeitlich moeglich, DARF keine automatische Elternschaft angelegt werden.
 
 Automatisch angelegte Beziehungen MUESSEN im Dokument als `status: inferred` und als automatisch abgeleitet gekennzeichnet werden. Ihre automatisch erzeugte Erklaerung MUSS als Kommentar hinterlegt werden. Wird die Quellbeziehung entfernt oder ist die Zeitbedingung spaeter nicht mehr erfuellt, MUSS die automatisch angelegte Beziehung entfernt werden; ein bestehender Kommentar einer weiterhin gueltigen automatischen Beziehung MUSS erhalten bleiben.
 
@@ -70,14 +87,14 @@ Automatisch angelegte Beziehungen MUESSEN im Dokument als `status: inferred` und
 - **THEN** wird B nach C automatisch als `inferred` angelegt und die Beziehung erklaert ihre Ableitung per Kommentar
 
 #### Scenario: Mehrere Ehepartner werden ueber Todesdaten zugeordnet
-- **GIVEN** A hat mehrere Ehepartner, C hat ein bekanntes Geburtsjahr, alle Ehepartner haben ein Todesjahr und genau B ist bei der Geburt von C noch zeitlich moeglich
+- **GIVEN** A hat mehrere Ehepartner, C hat ein bekanntes Geburtsdatum, genau ein Ehepartner B ist nach den bekannten Datumskomponenten zeitlich moeglich und alle anderen Ehepartner sind nachweisbar vorher gestorben
 - **WHEN** A als Elternteil von C gespeichert wird
 - **THEN** wird nur B nach C als `inferred` angelegt
 
 #### Scenario: Fehlendes Todesdatum verhindert die mehrdeutige Ableitung
-- **GIVEN** A hat mehrere Ehepartner und mindestens ein Ehepartner hat kein Todesjahr
+- **GIVEN** A hat mehrere Ehepartner und mindestens ein Todesdatum oder das Geburtsdatum von C ist nur teilweise oder gar nicht bekannt, sodass dadurch mehrere Ehepartner zeitlich moeglich bleiben
 - **WHEN** A als Elternteil von C gespeichert wird
-- **THEN** wird keine automatische Elternschaft zu einem Ehepartner angelegt
+- **THEN** werden fehlende Komponenten nicht durch angenommene Monate oder Tage ersetzt und bei dadurch mehreren moeglichen Ehepartnern wird keine automatische Elternschaft angelegt
 
 #### Scenario: Mehrere zeitlich passende Ehepartner verhindern eine Ableitung
 - **GIVEN** A hat mehrere Ehepartner, C hat ein bekanntes Geburtsjahr und mindestens zwei Ehepartner haben ein Todesjahr am oder nach dem Geburtsjahr von C
@@ -102,3 +119,13 @@ Das System MUST Kommentare und die Kennzeichnung automatisch abgeleiteter Bezieh
 - **GIVEN** eine importierte Datei enthaelt eine Ehe und eine passende Eltern-Kind-Beziehung, aber noch nicht die sichere inferred-Kante
 - **WHEN** die Datei vollstaendig validiert und geoeffnet wird
 - **THEN** wird die fehlende automatische Elternschaft im neuen Dokument angelegt
+
+### Requirement: Die Arbeitsflaeche erlaubt starken Zoom-Out
+
+Das System MUST erlauben, die Arbeitsflaeche weit genug herauszuzoomen, dass auch grosse oder weitlaeufige Stammbaueme erreichbar bleiben. Die minimale Zoomstufe MUSS mindestens bis `0.01` reichen, und eine automatische Fit-View-Aktion DARF diese Untergrenze nicht auf eine hoehere feste Stufe beschraenken.
+
+#### Scenario: Die Benutzerin kann stark herauszoomen
+
+- **GIVEN** mindestens eine Person ist auf der Arbeitsflaeche sichtbar
+- **WHEN** die Benutzerin die Zoom-Out-Aktion wiederholt ausfuehrt
+- **THEN** kann die Ansicht unter eine Zoomstufe von `0.3` verkleinert werden, ohne dass die Zoomsteuerung vorher bei `0.5` stoppt

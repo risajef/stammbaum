@@ -4,6 +4,7 @@ import { updatePerson } from './person'
 import {
   createMarriage,
   createParentChild,
+  getImplicitMarriageEndDate,
   removeRelationship,
 } from './relationship'
 import type { FamilyTreeDocument } from './types'
@@ -97,6 +98,7 @@ describe('relationship domain operations', () => {
             type: 'marriage',
             fromId: 'woman-1',
             toId: 'man-1',
+            startDate: null,
             status: 'explicit',
             sourceUrl: null,
             comment: null,
@@ -132,6 +134,78 @@ describe('relationship domain operations', () => {
       () => 'marriage-3',
     )
     expect(duplicate.ok).toBe(false)
+  })
+
+  it('stores a partial marriage start date', () => {
+    const result = createMarriage(
+      documentWithPeople(),
+      'woman-1',
+      'man-1',
+      { startDate: '1880-05' },
+      () => 'marriage-1',
+    )
+
+    expect(result).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        relationships: [
+          expect.objectContaining({
+            id: 'marriage-1',
+            startDate: '1880-05',
+          }),
+        ],
+      }),
+    })
+  })
+
+  it('derives the earliest certain death as the implicit marriage end', () => {
+    const document = documentWithPeople()
+    document.persons = document.persons.map((person) =>
+      person.id === 'woman-1'
+        ? { ...person, deathYear: '1925-08-12' }
+        : person.id === 'man-1'
+          ? { ...person, deathYear: '1920-03-01' }
+          : person,
+    )
+    const result = createMarriage(document, 'woman-1', 'man-1', {}, () => 'marriage-1')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(getImplicitMarriageEndDate(result.value.relationships[0], result.value.persons)).toBe(
+      '1920-03-01',
+    )
+  })
+
+  it('leaves the implicit marriage end open when deaths cannot be compared certainly', () => {
+    const document = documentWithPeople()
+    document.persons = document.persons.map((person) =>
+      person.id === 'woman-1'
+        ? { ...person, deathYear: '1920-05' }
+        : person.id === 'man-1'
+          ? { ...person, deathYear: '1920-05-01' }
+          : person,
+    )
+    const result = createMarriage(document, 'woman-1', 'man-1', {}, () => 'marriage-1')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(getImplicitMarriageEndDate(result.value.relationships[0], result.value.persons)).toBeNull()
+  })
+
+  it('rejects an invalid marriage start date', () => {
+    const result = createMarriage(
+      documentWithPeople(),
+      'woman-1',
+      'man-1',
+      { startDate: '1900-02-29' },
+    )
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'invalid-date', field: 'startDate' },
+    })
   })
 
   it('rejects marriages with invalid roles, self-links, or unknown people', () => {

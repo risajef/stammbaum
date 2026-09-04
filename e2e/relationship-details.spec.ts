@@ -66,7 +66,7 @@ const createMarriage = async (page: Page) => {
 }
 
 test.describe('Beziehungsdetails', () => {
-  test('aendert Status und Quelle einer ausgewaehlten Beziehung', async ({ page }) => {
+  test('ändert Status und Quelle einer ausgewählten Beziehung', async ({ page }) => {
     await page.goto('/')
     await createMarriage(page)
 
@@ -79,7 +79,7 @@ test.describe('Beziehungsdetails', () => {
     await expect(page.getByLabel('Quelle (URL)')).toHaveValue('https://example.org/register/28')
   })
 
-  test('weist eine ungueltige Quelle am Quellenfeld zurueck', async ({ page }) => {
+  test('weist eine ungültige Quelle am Quellenfeld zurück', async ({ page }) => {
     await page.goto('/')
     await createMarriage(page)
 
@@ -87,13 +87,13 @@ test.describe('Beziehungsdetails', () => {
     await page.getByRole('button', { name: 'Beziehung speichern' }).click()
 
     await expect(
-      page.getByText('Die Quelle muss eine gueltige HTTP- oder HTTPS-URL sein.'),
+      page.getByText('Die Quelle muss eine gültige HTTP- oder HTTPS-URL sein.'),
     ).toBeVisible()
     await expect(page.getByLabel('Quelle (URL)')).toHaveAttribute('aria-invalid', 'true')
     await expect(page.locator('.relationship-edge--explicit')).toHaveCount(1)
   })
 
-  test('entfernt nur die ausgewaehlte Beziehung', async ({ page }) => {
+  test('entfernt nur die ausgewählte Beziehung', async ({ page }) => {
     await page.goto('/')
     await createMarriage(page)
     await addPerson(page, 'Lina', 'Weber')

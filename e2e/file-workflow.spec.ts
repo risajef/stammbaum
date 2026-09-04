@@ -57,7 +57,7 @@ const connectPeople = async (
 
 const openFile = async (page: Page, file: { name: string; buffer: Buffer }) => {
   const chooserPromise = page.waitForEvent('filechooser')
-  await page.getByRole('button', { name: 'Oeffnen' }).click()
+  await page.getByRole('button', { name: 'Öffnen' }).click()
   const chooser = await chooserPromise
   await chooser.setFiles(file)
 }
@@ -76,7 +76,7 @@ test.describe('Datei-Workflow', () => {
     })
   })
 
-  test('exportiert und importiert einen vollstaendigen Stammbaum', async ({ page }) => {
+  test('exportiert und importiert einen vollständigen Stammbaum', async ({ page }) => {
     await page.goto('/')
     await addPerson(page, 'Anna', 'Weber', 'woman')
     await addPerson(page, 'Hans', 'Weber', 'man')
@@ -105,7 +105,32 @@ test.describe('Datei-Workflow', () => {
     await expect(page.locator('.relationship-edge')).toHaveCount(1)
   })
 
-  test('lehnt einen ungueltigen Import ohne Teilueberschreiben ab', async ({ page }) => {
+  test('erhält Teil-Datumswerte beim Export und Import', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Person anlegen' }).click()
+    await page.getByLabel('Vorname').fill('Anna')
+    await page.getByLabel('Nachname').fill('Weber')
+    await page.getByLabel('Geburtsdatum').fill('1900-05')
+    await page.getByLabel('Todesdatum').fill('1970-08-12')
+    await page.getByRole('button', { name: 'Person speichern' }).click()
+
+    await expect(page.locator('.person-node').filter({ hasText: '1900-05 - 1970-08-12' })).toBeVisible()
+
+    const downloadPromise = page.waitForEvent('download')
+    await page.locator('.topbar-actions').getByRole('button', { name: 'Speichern' }).click()
+    const download = await downloadPromise
+    const stream = await download.createReadStream()
+    if (!stream) throw new Error('Export konnte nicht gelesen werden.')
+    const chunks: Buffer[] = []
+    for await (const chunk of stream) chunks.push(Buffer.from(chunk))
+
+    await page.getByRole('button', { name: 'Neu' }).click()
+    await openFile(page, { name: 'dates.yaml', buffer: Buffer.concat(chunks) })
+
+    await expect(page.locator('.person-node').filter({ hasText: '1900-05 - 1970-08-12' })).toBeVisible()
+  })
+
+  test('lehnt einen ungültigen Import ohne Teilüberschreiben ab', async ({ page }) => {
     await page.goto('/')
     await addPerson(page, 'Anna', 'Weber')
     const invalidYaml = Buffer.from('schemaVersion: [')
@@ -113,11 +138,11 @@ test.describe('Datei-Workflow', () => {
     page.once('dialog', (dialog) => dialog.accept())
     await openFile(page, { name: 'invalid.yaml', buffer: invalidYaml })
 
-    await expect(page.getByRole('alert')).toContainText('gueltige YAML-Syntax')
+    await expect(page.getByRole('alert')).toContainText('gültige YAML-Syntax')
     await expect(page.locator('.person-node').filter({ hasText: 'Anna Weber' })).toBeVisible()
   })
 
-  test('zeigt ungespeicherte Aenderungen und bestaetigt das Ersetzen', async ({ page }) => {
+  test('zeigt ungespeicherte Änderungen und bestätigt das Ersetzen', async ({ page }) => {
     await page.goto('/')
     await addPerson(page, 'Anna', 'Weber')
     await expect(page.getByText('Ungespeichert')).toBeVisible()
@@ -129,6 +154,39 @@ test.describe('Datei-Workflow', () => {
     page.once('dialog', (dialog) => dialog.accept())
     await page.getByRole('button', { name: 'Neu' }).click()
     await expect(page.locator('.person-node')).toHaveCount(0)
-    await expect(page.getByRole('heading', { name: 'Waehle ein Objekt' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Wähle ein Objekt' })).toBeVisible()
+  })
+
+  test('setzt eine neue Person in die Mitte des aktuellen Sichtbereichs', async ({ page }) => {
+    await page.goto('/')
+    await addPerson(page, 'Anna', 'Weber')
+
+    const surface = page.locator('.flow-surface')
+    const firstNode = page.locator('.person-node').filter({ hasText: 'Anna Weber' })
+    const surfaceBox = await surface.boundingBox()
+    const firstBox = await firstNode.boundingBox()
+    if (!surfaceBox || !firstBox) throw new Error('Canvas oder erste Person konnte nicht vermessen werden.')
+
+    await page.getByRole('button', { name: 'Person anlegen' }).click()
+    await page.getByLabel('Vorname').fill('Hans')
+    await page.getByLabel('Nachname').fill('Meyer')
+    await page.getByRole('button', { name: 'Person speichern' }).click()
+
+    const newNode = page.locator('.person-node').filter({ hasText: 'Hans Meyer' })
+    await expect(newNode).toBeVisible()
+    await expect.poll(async () => {
+      const currentSurfaceBox = await surface.boundingBox()
+      const currentNodeBox = await newNode.boundingBox()
+      if (!currentSurfaceBox || !currentNodeBox) return Number.POSITIVE_INFINITY
+      const surfaceCenter = {
+        x: currentSurfaceBox.x + currentSurfaceBox.width / 2,
+        y: currentSurfaceBox.y + currentSurfaceBox.height / 2,
+      }
+      const nodeCenter = {
+        x: currentNodeBox.x + currentNodeBox.width / 2,
+        y: currentNodeBox.y + currentNodeBox.height / 2,
+      }
+      return Math.hypot(nodeCenter.x - surfaceCenter.x, nodeCenter.y - surfaceCenter.y)
+    }).toBeLessThan(36)
   })
 })

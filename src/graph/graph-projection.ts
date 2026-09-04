@@ -38,16 +38,16 @@ export interface GraphProjection {
 
 const defaultFitViewOptions = {
   padding: 0.2,
-  minZoom: 0.25,
+  minZoom: 0.01,
   maxZoom: 1.4,
 }
 
 const NODE_WIDTH = 148
 const PARTNER_GAP = 24
-const COMPONENT_GAP = 90
-const ORIGIN_X = 120
+const COMPONENT_GAP = 24
+const ORIGIN_X = 0
 const ORIGIN_Y = 80
-const GENERATION_GAP = 180
+const GENERATION_GAP = 132
 
 interface FamilyComponent {
   id: string
@@ -189,10 +189,10 @@ const createGeneratedPositions = (document: FamilyTreeDocument): Map<string, Pos
         .filter((center): center is number => center !== undefined)
       const firstDesired = firstParents.length > 0
         ? firstParents.reduce((sum, center) => sum + center, 0) / firstParents.length
-        : ORIGIN_X + first.order * (NODE_WIDTH + COMPONENT_GAP)
+        : ORIGIN_X
       const secondDesired = secondParents.length > 0
         ? secondParents.reduce((sum, center) => sum + center, 0) / secondParents.length
-        : ORIGIN_X + second.order * (NODE_WIDTH + COMPONENT_GAP)
+        : ORIGIN_X
       return firstDesired - secondDesired || first.order - second.order
     })
     let previousRight = ORIGIN_X - COMPONENT_GAP
@@ -203,7 +203,7 @@ const createGeneratedPositions = (document: FamilyTreeDocument): Map<string, Pos
         .filter((center): center is number => center !== undefined)
       const desiredCenter = parentCenters.length > 0
         ? parentCenters.reduce((sum, center) => sum + center, 0) / parentCenters.length
-        : ORIGIN_X + component.order * (NODE_WIDTH + COMPONENT_GAP)
+        : ORIGIN_X
       const width = componentWidth(component)
       const minimumCenter = previousRight + COMPONENT_GAP + width / 2
       const center = Math.max(desiredCenter, minimumCenter)
@@ -218,6 +218,19 @@ const createGeneratedPositions = (document: FamilyTreeDocument): Map<string, Pos
         })
       })
     }
+  }
+
+  const positionValues = [...positions.values()]
+  if (positionValues.length > 0) {
+    const leftEdge = Math.min(...positionValues.map((position) => position.x))
+    const rightEdge = Math.max(...positionValues.map((position) => position.x + NODE_WIDTH))
+    const layoutCenter = (leftEdge + rightEdge) / 2
+    positions.forEach((position, personId) => {
+      positions.set(personId, {
+        ...position,
+        x: Math.round(position.x - layoutCenter),
+      })
+    })
   }
 
   return positions
@@ -259,17 +272,29 @@ const projectRelationship = (
 ): Edge<RelationshipEdgeData> => {
   const isInferred = relationship.status === 'inferred'
   const isParentChild = relationship.type === 'parent-child'
+  const edgeColor = isParentChild ? '#385b59' : '#c6654c'
 
   return {
     id: relationship.id,
     source: relationship.fromId,
     target: relationship.toId,
-    type: isParentChild ? 'smoothstep' : 'straight',
+    type: 'simplebezier',
     selected: selection?.type === 'relationship' && selection.id === relationship.id,
-    className: isInferred
-      ? 'relationship-edge relationship-edge--inferred'
-      : 'relationship-edge relationship-edge--explicit',
-    style: isInferred ? { strokeDasharray: '7 5' } : {},
+    className: [
+      'relationship-edge',
+      isInferred ? 'relationship-edge--inferred' : 'relationship-edge--explicit',
+      isParentChild ? 'relationship-edge--parent-child' : 'relationship-edge--marriage',
+    ].join(' '),
+    label: isParentChild ? 'Eltern-Kind' : 'Ehe',
+    labelStyle: { fill: edgeColor, fontSize: 10, fontWeight: 700 },
+    labelBgStyle: { fill: '#fffdf8', fillOpacity: 0.94, stroke: edgeColor },
+    labelBgPadding: [4, 2],
+    labelBgBorderRadius: 2,
+    style: {
+      stroke: edgeColor,
+      strokeWidth: 2.2,
+      ...(isInferred ? { strokeDasharray: '7 5' } : {}),
+    },
     data: {
       relationshipId: relationship.id,
       relationshipType: relationship.type,
@@ -280,7 +305,7 @@ const projectRelationship = (
       ? {
           markerEnd: {
             type: MarkerType.ArrowClosed,
-            color: '#385b59',
+            color: edgeColor,
           },
         }
       : {}),
@@ -290,12 +315,17 @@ const projectRelationship = (
 export const projectFamilyTree = (
   document: FamilyTreeDocument,
   selection?: GraphSelection,
+  positionOverrides: ReadonlyMap<string, Position> = new Map(),
 ): GraphProjection => {
   const positions = createGeneratedPositions(document)
 
   return {
     nodes: document.persons.map((person) =>
-      projectPerson(person, positions.get(person.id) ?? { x: 120, y: 80 }, selection),
+      projectPerson(
+        person,
+        positionOverrides.get(person.id) ?? positions.get(person.id) ?? { x: 120, y: 80 },
+        selection,
+      ),
     ),
     edges: document.relationships.map((relationship) =>
       projectRelationship(relationship, selection),

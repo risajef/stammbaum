@@ -22,7 +22,7 @@ test.describe('Datei-Fallback', () => {
     })
   })
 
-  test('laedt und speichert ohne direkte Dateisystem-API', async ({ page }) => {
+  test('lädt und speichert ohne direkte Dateisystem-API', async ({ page }) => {
     await page.goto('/')
     await addPerson(page)
 
@@ -34,7 +34,7 @@ test.describe('Datei-Fallback', () => {
 
     await page.getByRole('button', { name: 'Neu' }).click()
     const chooserPromise = page.waitForEvent('filechooser')
-    await page.getByRole('button', { name: 'Oeffnen' }).click()
+    await page.getByRole('button', { name: 'Öffnen' }).click()
     const chooser = await chooserPromise
     await chooser.setFiles(downloadedPath as string)
 

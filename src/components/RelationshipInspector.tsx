@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { getImplicitMarriageEndDate } from '../domain/relationship'
 import type {
   DomainError,
   Person,
@@ -11,6 +12,7 @@ import type {
 export interface RelationshipFormDraft {
   relationshipType: RelationshipType
   status: RelationshipStatus
+  startDate: string
   sourceUrl: string
   comment: string
 }
@@ -29,6 +31,7 @@ const valuesFromRelationship = (
 ): RelationshipFormDraft => ({
   relationshipType: relationship?.type ?? 'marriage',
   status: relationship?.status ?? 'explicit',
+  startDate: relationship?.startDate?.toString() ?? '',
   sourceUrl: relationship?.sourceUrl ?? '',
   comment: relationship?.comment ?? '',
 })
@@ -74,6 +77,12 @@ function RelationshipInspector({
   const fieldError = (field: string) => (error?.field === field ? error.message : undefined)
   const personLabel = (person: Person | null) =>
     person ? `${person.firstName} ${person.lastName}` : 'Unbekannte Person'
+  const implicitMarriageEndDate = relationship
+    ? getImplicitMarriageEndDate(
+        relationship,
+        [sourcePerson, targetPerson].filter((person): person is Person => Boolean(person)),
+      )
+    : null
 
   return (
     <form className="relationship-form" onSubmit={handleSubmit} noValidate>
@@ -82,7 +91,7 @@ function RelationshipInspector({
           <p className="section-label">Beziehung</p>
           <h2>{relationship ? 'Beziehung bearbeiten' : 'Beziehung anlegen'}</h2>
         </div>
-        <span className="form-badge">Pruefen</span>
+        <span className="form-badge">Prüfen</span>
       </div>
 
       <p className="relationship-endpoints">
@@ -139,6 +148,33 @@ function RelationshipInspector({
           </select>
           {fieldError('status') && <small className="field-error">{fieldError('status')}</small>}
         </label>
+
+        {values.relationshipType === 'marriage' && (
+          <label className="form-field">
+            <span>Ehebeginn</span>
+            <input
+              aria-invalid={Boolean(fieldError('startDate'))}
+              aria-label="Ehebeginn"
+              inputMode="numeric"
+              maxLength={10}
+              placeholder="YYYY-MM-DD"
+              value={values.startDate}
+              onChange={(event) => updateValue('startDate', event.target.value)}
+            />
+            {fieldError('startDate') && (
+              <small className="field-error">{fieldError('startDate')}</small>
+            )}
+          </label>
+        )}
+
+        {values.relationshipType === 'marriage' && relationship && (
+          <div className="relationship-period" aria-label="Ehezeitraum">
+            <span>Implizites Ende</span>
+            <output aria-label="Implizites Eheende">
+              {implicitMarriageEndDate ?? 'offen'}
+            </output>
+          </div>
+        )}
 
         <label className="form-field">
           <span>Quelle</span>

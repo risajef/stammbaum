@@ -1,4 +1,5 @@
 import type { FamilyTreeDocument, Person, Relationship } from './types'
+import { comparePartialDates } from './life-date'
 
 const relationshipKey = (fromId: string, toId: string) => `${fromId}\u0000${toId}`
 
@@ -15,7 +16,7 @@ const generatedComment = (
   const parent = document.persons.find((person) => person.id === sourceRelationship.fromId)
   const spouse = document.persons.find((person) => person.id === spouseId)
   const child = document.persons.find((person) => person.id === sourceRelationship.toId)
-  return `Automatisch abgeleitet: ${personLabel(spouse)} ist Ehepartner von ${personLabel(parent)} und damit moeglicher Elternteil von ${personLabel(child)}.`
+  return `Automatisch abgeleitet: ${personLabel(spouse)} ist Ehepartner von ${personLabel(parent)} und damit möglicher Elternteil von ${personLabel(child)}.`
 }
 
 const spouseIdsFor = (
@@ -48,18 +49,18 @@ const eligibleSpouseIds = (
   if (!child || child.birthYear === null) {
     return []
   }
-  const childBirthYear = child.birthYear
 
   const spouses = spouseIds.map((spouseId) =>
     document.persons.find((person) => person.id === spouseId),
   )
-  if (spouses.some((spouse) => !spouse || spouse.deathYear === null)) {
-    return []
-  }
 
   const candidates = spouses
     .filter((spouse): spouse is Person => Boolean(spouse))
-    .filter((spouse) => (spouse.deathYear ?? Number.NEGATIVE_INFINITY) >= childBirthYear)
+    .filter(
+      (spouse) =>
+        spouse.deathYear === null ||
+        comparePartialDates(spouse.deathYear, child.birthYear) !== -1,
+    )
     .map((spouse) => spouse.id)
   return candidates.length === 1 ? candidates : []
 }

@@ -27,8 +27,8 @@ describe('person domain operations', () => {
             firstName: 'Anna',
             lastName: 'Weber',
             gender: 'woman',
-            birthYear: 1834,
-            deathYear: 1901,
+            birthYear: '1834',
+            deathYear: '1901',
             position: null,
             comment: null,
           },
@@ -60,6 +60,60 @@ describe('person domain operations', () => {
         position: null,
       })
     }
+  })
+
+  it('accepts partial birth and death dates without filling unknown components', () => {
+    const result = createPerson(
+      createEmptyDocument(),
+      {
+        firstName: 'Johann',
+        lastName: 'Weber',
+        birthYear: '1900-05',
+        deathYear: '1970-08-12',
+      },
+      () => 'person-1',
+    )
+
+    expect(result).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        persons: [
+          expect.objectContaining({
+            birthYear: '1900-05',
+            deathYear: '1970-08-12',
+          }),
+        ],
+      }),
+    })
+  })
+
+  it('accepts a life span when the missing day prevents a certain ordering error', () => {
+    const result = createPerson(
+      createEmptyDocument(),
+      {
+        firstName: 'Johann',
+        lastName: 'Weber',
+        birthYear: '1900-05',
+        deathYear: '1900-05-01',
+      },
+      () => 'person-1',
+    )
+
+    expect(result.ok).toBe(true)
+  })
+
+  it('accepts February 29 in a leap year', () => {
+    const result = createPerson(
+      createEmptyDocument(),
+      {
+        firstName: 'Johann',
+        lastName: 'Weber',
+        birthYear: '2000-02-29',
+      },
+      () => 'person-1',
+    )
+
+    expect(result.ok).toBe(true)
   })
 
   it('stores a trimmed person comment and normalises an empty comment to null', () => {
@@ -129,7 +183,7 @@ describe('person domain operations', () => {
     if (result.ok) {
       expect(result.value.persons[0]).toMatchObject({
         lastName: 'Walter',
-        deathYear: 1901,
+        deathYear: '1901',
       })
       expect(result.value.relationships).toEqual(document.relationships)
     }
@@ -139,9 +193,16 @@ describe('person domain operations', () => {
     ['missing first name', { firstName: ' ', lastName: 'Weber' }],
     ['missing last name', { firstName: 'Anna', lastName: '' }],
     ['fractional birth year', { firstName: 'Anna', lastName: 'Weber', birthYear: 1834.5 }],
+    ['invalid month', { firstName: 'Anna', lastName: 'Weber', birthYear: '1834-13' }],
+    ['invalid day', { firstName: 'Anna', lastName: 'Weber', birthYear: '1834-04-31' }],
+    ['invalid leap day', { firstName: 'Anna', lastName: 'Weber', birthYear: '1900-02-29' }],
     [
       'death before birth',
       { firstName: 'Anna', lastName: 'Weber', birthYear: 1901, deathYear: 1834 },
+    ],
+    [
+      'death before birth date',
+      { firstName: 'Anna', lastName: 'Weber', birthYear: '1900-05-20', deathYear: '1900-05-19' },
     ],
   ])('rejects %s', (_description, input) => {
     const result = createPerson(createEmptyDocument(), input, () => 'person-1')

@@ -162,6 +162,36 @@ describe('inferred family relationships', () => {
     expect(result.relationships.some((relationship) => relationship.inferredFrom)).toBe(false)
   })
 
+  it('infers the only spouse left after a precise partial-date comparison', () => {
+    const document = documentWithMultipleSpouseParent()
+    document.persons = document.persons.map((person) => {
+      if (person.id === 'spouse-b') return { ...person, deathYear: '1920-06' }
+      if (person.id === 'spouse-d') return { ...person, deathYear: '1919-12-31' }
+      if (person.id === 'child-c') return { ...person, birthYear: '1920-06-15' }
+      return person
+    })
+
+    const result = synchronizeInferredRelationships(document)
+
+    expect(result.relationships).toContainEqual(
+      expect.objectContaining({ fromId: 'spouse-b', toId: 'child-c', status: 'inferred' }),
+    )
+  })
+
+  it('does not infer when a partial comparison leaves multiple spouses possible', () => {
+    const document = documentWithMultipleSpouseParent()
+    document.persons = document.persons.map((person) => {
+      if (person.id === 'spouse-b') return { ...person, deathYear: '1920' }
+      if (person.id === 'child-c') return { ...person, birthYear: '1920-06' }
+      return person
+    })
+
+    const result = synchronizeInferredRelationships(document)
+
+    expect(result.relationships).toHaveLength(3)
+    expect(result.relationships.some((relationship) => relationship.inferredFrom)).toBe(false)
+  })
+
   it('removes stale automatic relationships and keeps edited comments', () => {
     const first = synchronizeInferredRelationships(documentWithMultipleSpouseParent())
     const automatic = first.relationships.find((relationship) => relationship.inferredFrom)

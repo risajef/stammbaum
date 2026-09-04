@@ -33,12 +33,12 @@ const assertNoOverlap = async (
 }
 
 test.describe('responsive Workbench', () => {
-  test('haelt die Desktop-Bereiche getrennt und erreichbar', async ({ page }) => {
+  test('hält die Desktop-Bereiche getrennt und erreichbar', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto('/')
 
     await expect(page.getByRole('button', { name: 'Person anlegen' })).toBeVisible()
-    await expect(page.getByRole('region', { name: 'Stammbaum-Arbeitsflaeche' })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Stammbaum-Arbeitsfläche' })).toBeVisible()
     await expect(page.getByRole('complementary', { name: 'Detailinspektor' })).toBeVisible()
 
     const canvas = await page.locator('.canvas-panel').boundingBox()
@@ -50,16 +50,16 @@ test.describe('responsive Workbench', () => {
     }
   })
 
-  test('haelt Toolbar, Graph und Inspektor auf schmalen Viewports erreichbar', async ({ page }) => {
+  test('hält Toolbar, Graph und Inspektor auf schmalen Viewports erreichbar', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto('/')
 
     await assertInsideViewport(page, '.topbar')
     await assertInsideViewport(page, '.topbar-actions')
     await expect(page.getByRole('button', { name: 'Neu' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Oeffnen' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Öffnen' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Speichern' })).toBeVisible()
-    await expect(page.getByRole('region', { name: 'Stammbaum-Arbeitsflaeche' })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Stammbaum-Arbeitsfläche' })).toBeVisible()
     await assertNoOverlap(page, '.brand-lockup', '.topbar-actions')
     await assertNoOverlap(page, '.canvas-caption', '.canvas-status')
 

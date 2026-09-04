@@ -8,22 +8,69 @@ Diese Capability ermoeglicht es, genealogische Personen und ihre belegten oder g
 
 ### Requirement: Personen koennen erfasst und bearbeitet werden
 
-Das System MUST Personen mit einem Vor- und Nachnamen anlegen koennen. Geschlecht darf als Frau oder Mann angegeben werden und ist fuer die Erstellung einer Ehebeziehung erforderlich; Geburts- und Todesjahr sind optional. Eine bestehende Person MUST ohne Verlust ihrer Beziehungen bearbeitbar sein.
+Das System MUST Personen mit einem Vor- und Nachnamen anlegen koennen. Geschlecht darf als Frau oder Mann angegeben werden und ist fuer die Erstellung einer Ehebeziehung erforderlich; Geburts- und Todesdaten sind optional und duerfen als Jahr, Jahr-Monat oder vollstaendiges Datum angegeben werden. Eine bestehende Person MUST ohne Verlust ihrer Beziehungen bearbeitbar sein. Die Aktion zum Anlegen einer Person MUSS direkt in der Uebersichtszeile der Arbeitsflaeche erreichbar sein; ein separates Werkzeugfenster dafuer ist nicht erforderlich.
 
 #### Scenario: Person mit vollstaendigen Angaben anlegen
 - **GIVEN** die Arbeitsflaeche ist geoeffnet
-- **WHEN** die Benutzerin eine Person mit Vorname, Nachname, Geschlecht, Geburtsjahr und Todesjahr anlegt und bestaetigt
+- **WHEN** die Benutzerin eine Person mit Vorname, Nachname, Geschlecht sowie Geburts- und Todesdatum im Format `YYYY-MM-DD` anlegt und bestaetigt
 - **THEN** erscheint genau eine neue Person mit diesen Angaben auf der Arbeitsflaeche
 
 #### Scenario: Unbekannte Lebensdaten leer lassen
-- **GIVEN** die Benutzerin legt eine Person ohne bekanntes Geburts- oder Todesjahr an
+- **GIVEN** die Benutzerin legt eine Person ohne bekanntes Geburts- oder Todesdatum an
 - **WHEN** sie die Person bestaetigt
 - **THEN** wird die Person mit leeren Lebensdaten gespeichert und als gueltig angezeigt
 
 #### Scenario: Person bearbeiten ohne Beziehungen zu verlieren
 - **GIVEN** eine Person hat mindestens eine Ehe- oder Eltern-Kind-Beziehung
-- **WHEN** die Benutzerin den Nachnamen oder ein Lebensjahr aendert und speichert
+- **WHEN** die Benutzerin den Nachnamen oder ein Lebensdatum aendert und speichert
 - **THEN** wird die Angabe aktualisiert und jede bestehende Beziehung bleibt erhalten
+
+#### Scenario: Person aus der Uebersicht anlegen
+
+#### Scenario: Neue Person erscheint im aktuellen Sichtbereich
+ - **GIVEN** die Benutzerin betrachtet einen beliebigen Ausschnitt der Arbeitsflaeche
+ - **WHEN** sie eine neue Person speichert
+ - **THEN** erscheint die neue Person zentriert im aktuell sichtbaren Arbeitsbereich und nicht an einer festen Dokumentposition
+
+### Requirement: Geburts- und Todesdaten unterstuetzen Teilangaben
+
+Das System MUST je ein einzelnes optionales Eingabefeld fuer Geburt und Tod anbieten. Ein nichtleeres Datum MUST exakt als `YYYY`, `YYYY-MM` oder `YYYY-MM-DD` mit einem gueltigen Monat und Kalendertag eingegeben werden koennen. Die eingegebene Genauigkeit MUST beim Anzeigen und Speichern erhalten bleiben. Bestehende numerische Jahreswerte aus schemaVersion-1-YAML-Dateien MUST weiterhin importierbar sein und als vierstellige Jahreswerte normalisiert werden.
+
+#### Scenario: Teilangaben bleiben erhalten
+- **GIVEN** die Benutzerin gibt fuer eine Person ein Geburtsdatum `1900-05` und ein Todesdatum `1970` ein
+- **WHEN** sie die Person speichert und den Stammbaum exportiert und wieder importiert
+- **THEN** bleiben `1900-05` und `1970` unveraendert erhalten und werden auf dem Personenknoten angezeigt
+
+#### Scenario: Vollstaendiges Datum mit gueltigem Kalendertag
+- **GIVEN** die Benutzerin gibt `1900-02-28` als Geburtsdatum ein
+- **WHEN** sie die Person speichert
+- **THEN** wird das vollstaendige Datum ohne Verlust von Monat und Tag gespeichert
+
+#### Scenario: Unmoeglicher Kalendertag wird abgelehnt
+- **GIVEN** die Benutzerin gibt `1900-02-29` oder einen Monat ausserhalb von `01` bis `12` ein
+- **WHEN** sie die Person speichert
+- **THEN** wird das betroffene Datumsfeld mit einem konkreten Fehler markiert und die zuletzt gueltigen Personendaten bleiben unveraendert
+
+#### Scenario: Unbekannte Datumskomponenten werden nicht erfunden
+- **GIVEN** nur das Jahr oder Jahr und Monat eines Lebensdatums sind bekannt
+- **WHEN** die Benutzerin die Person speichert
+- **THEN** bleibt die nicht bekannte Genauigkeit unbekannt und das System ergaenzt keinen kuenstlichen Monat oder Tag
+
+### Requirement: Die deutschsprachige Oberflaeche verwendet echte Umlaute
+
+Das System MUST in aktuellen deutschsprachigen Benutzeroberflaechentexten, Statusanzeigen und Fehlermeldungen die korrekten deutschen Zeichen `ä`, `ö`, `ü`, `Ä`, `Ö` und `Ü` verwenden, wenn ein Wort einen Umlaut enthaelt. Ausgeschriebene Ersatzformen wie `Ae`, `Oe`, `Ue` sowie `ae`, `oe`, `ue` duerfen in diesen sichtbaren Produkttexten nicht verwendet werden.
+
+#### Scenario: Umlaute erscheinen in der Oberflaeche
+
+- **GIVEN** die Benutzerin oeffnet die Anwendung und nutzt die Datei-, Uebersichts- oder Inspektor-Aktionen
+- **WHEN** ein deutschsprachiger Text angezeigt wird
+- **THEN** erscheinen darin echte Umlaute statt ausgeschriebener Ersatzformen
+
+#### Scenario: Umlaute erscheinen in Fehlermeldungen
+
+- **GIVEN** die Benutzerin gibt ungueltige Daten ein oder eine Dateioperation schlaegt fehl
+- **WHEN** die Anwendung den Fehler anzeigt
+- **THEN** verwendet die Meldung die korrekten deutschen Umlaute
 
 ### Requirement: Ehebeziehungen koennen zwischen Frau und Mann erstellt werden
 
@@ -106,19 +153,70 @@ Das System MUST eine direkte Interaktion anbieten, mit der die Benutzerin eine P
 - **WHEN** die Benutzerin die Detailansicht oeffnet
 - **THEN** sieht sie die vollstaendigen bearbeitbaren Angaben, vorhandene Quelle und den Status und kann Aenderungen speichern oder verwerfen
 
+### Requirement: Beziehungstypen sind auf der Arbeitsflaeche unterscheidbar
+
+Das System MUST Ehe- und Eltern-Kind-Beziehungen auf der Arbeitsflaeche durch eine gemeinsame weiche `simplebezier`-Linienform sowie unterschiedliche Farben und sichtbare Typbezeichnungen unterscheidbar darstellen. Eine Eltern-Kind-Beziehung MUST weiterhin eindeutig in Richtung des Kindes zeigen; eine Ehe DARF keinen Richtungspfeil zum Ehepartner anzeigen. Der Beziehungsstatus `inferred` MUSS unabhaengig vom Beziehungstyp zusaetzlich erkennbar bleiben.
+
+#### Scenario: Ehe und Elternschaft haben unterschiedliche Kanten
+- **GIVEN** eine Arbeitsflaeche enthaelt eine Ehe und eine Eltern-Kind-Beziehung
+- **WHEN** beide Beziehungen angezeigt werden
+- **THEN** unterscheiden sie sich ohne Oeffnen des Inspektors durch Farbe oder sichtbare Typbezeichnung
+
+#### Scenario: Elternschaft zeigt zum Kind
+- **GIVEN** eine gerichtete Eltern-Kind-Beziehung von A nach C ist vorhanden
+- **WHEN** ihre Kante angezeigt wird
+- **THEN** besitzt sie eine sichtbare Richtungsspitze auf der Seite von C
+
+#### Scenario: Ehe hat keine kuenstliche Richtung
+- **GIVEN** eine Ehe zwischen A und B ist vorhanden
+- **WHEN** ihre Kante angezeigt wird
+- **THEN** besitzt sie keine Richtungsspitze, die einen Ehepartner als Kind oder Ziel auszeichnet
+
+### Requirement: Personen koennen temporaer fuer die Beziehungsarbeit verschoben werden
+
+Das System MUST erlauben, sichtbare Personen waehrend der aktuellen Sitzung auf der Arbeitsflaeche zu verschieben, damit Beziehungen leichter erstellt und geprueft werden koennen. Eine solche Positionsaenderung MUST ausschliesslich die aktuelle Ansicht betreffen. Sie DARF keine fachliche Dokumentaenderung, keinen Dirty-State und keine gespeicherte Personenposition erzeugen. View-Panning MUSS weiterhin moeglich bleiben, ohne dass das Ziehen eines Nodes die Arbeitsflaeche gleichzeitig verschiebt.
+
+#### Scenario: Node-Dragging aendert nur die aktuelle Ansicht
+
+- **GIVEN** eine Person ist sichtbar und das Dokument ist gespeichert
+- **WHEN** die Benutzerin den Node an eine andere Stelle zieht
+- **THEN** wird der Node an der neuen temporaeren Stelle angezeigt, waehrend das Dokument unveraendert bleibt und der gespeicherte Zustand weiterhin als gespeichert gilt
+
+#### Scenario: Temporaere Positionen werden nicht exportiert
+
+- **GIVEN** eine Person wurde temporaer verschoben
+- **WHEN** die Benutzerin den Stammbaum speichert
+- **THEN** enthaelt der YAML-Export nicht die temporaere Position, sondern weiterhin nur die fachlichen Dokumentdaten
+
+#### Scenario: Dokumentwechsel verwirft temporaere Positionen
+
+- **GIVEN** mindestens ein Node wurde temporaer verschoben
+- **WHEN** die Benutzerin ein neues Dokument anlegt oder ein anderes gueltiges Dokument importiert
+- **THEN** werden die temporaeren Positionen verworfen und die Nodes erhalten die automatisch berechneten Positionen des neuen Dokuments
+
 ### Requirement: Stammbaeume werden als YAML-Datei importiert und exportiert
 
-Das System MUST den vollstaendigen Stammbaum als eine versionierte YAML-Datei exportieren und eine gueltige Datei wieder importieren koennen. Der Roundtrip MUST Personen, stabile Identitaeten, Beziehungstypen, Richtung, Quellen und Schlussfolgerungsstatus erhalten. Eine Datenbank oder ein Server MUST fuer das Arbeiten mit einer Datei nicht erforderlich sein.
+Das System MUST den vollstaendigen Stammbaum als eine versionierte YAML-Datei exportieren und eine gueltige Datei wieder importieren koennen. Der Roundtrip MUST Personen, stabile Identitaeten, Teil-Datumswerte oder leere Lebensdaten, Ehe-Startdaten, Beziehungstypen, Richtung, Quellen und Schlussfolgerungsstatus erhalten. Ein implizites Ehe-Enddatum MUST nicht als eigenstaendiges editierbares Feld exportiert werden. Eine Datenbank oder ein Server MUST fuer das Arbeiten mit einer Datei nicht erforderlich sein.
 
 #### Scenario: Gueltigen Stammbaum exportieren und wieder importieren
-- **GIVEN** ein Stammbaum enthaelt Personen sowie explizite und geschlussfolgerte Beziehungen mit und ohne Quellen
+- **GIVEN** ein Stammbaum enthaelt Personen mit `YYYY`, `YYYY-MM` und `YYYY-MM-DD` sowie explizite und geschlussfolgerte Beziehungen
 - **WHEN** die Benutzerin ihn als YAML exportiert und diese Datei anschliessend importiert
-- **THEN** entspricht der importierte Stammbaum dem vorherigen Zustand einschliesslich aller Personendaten und Beziehungsmetadaten
+- **THEN** entspricht der importierte Stammbaum dem vorherigen Zustand einschliesslich der Genauigkeit aller Personendaten und Beziehungsmetadaten
+
+#### Scenario: Ehe-Startdaten ueberleben den Roundtrip
+- **GIVEN** ein Stammbaum enthaelt eine Ehe mit dem Startdatum `1880-05-20`
+- **WHEN** die Benutzerin ihn als YAML exportiert und anschliessend importiert
+- **THEN** bleibt `1880-05-20` an der Ehe erhalten und ein abgeleitetes Enddatum wird nicht als separates YAML-Feld angelegt
 
 #### Scenario: YAML-Validierungsfehler beim Import
-- **GIVEN** eine ausgewaehlte YAML-Datei ist syntaktisch ungueltig oder verletzt die erforderliche Struktur, etwa durch unbekannte Personenreferenzen oder eine ungueltige URL
+- **GIVEN** eine ausgewaehlte YAML-Datei ist syntaktisch ungueltig oder enthaelt ein ungueltiges Geburts-, Todes- oder Ehe-Startdatum oder verletzt die erforderliche Struktur, etwa durch unbekannte Personenreferenzen oder eine ungueltige URL
 - **WHEN** die Benutzerin den Import startet
 - **THEN** wird die Datei abgelehnt, ein verstaendlicher Fehler angezeigt und der aktuell geoeffnete Stammbaum nicht teilweise ueberschrieben
+
+#### Scenario: Alte Jahreswerte bleiben importierbar
+- **GIVEN** eine schemaVersion-1-YAML-Datei enthaelt eine numerische Angabe `birthYear: 1900` und keine Ehe-Startdaten
+- **WHEN** die Benutzerin die Datei importiert
+- **THEN** wird die Angabe als `1900` ohne zusaetzliche unbekannte Komponenten geladen
 
 #### Scenario: Datei kann ohne erweiterte Dateisystem-API genutzt werden
 - **GIVEN** der Browser stellt keine direkte Dateisystem-API zur Verfuegung
@@ -127,12 +225,22 @@ Das System MUST den vollstaendigen Stammbaum als eine versionierte YAML-Datei ex
 
 ### Requirement: Eingaben und ungespeicherte Aenderungen werden sicher behandelt
 
-Das System MUST fehlerhafte Eingaben vor dem Speichern sichtbar markieren und darf bei einem Validierungsfehler keine gueltigen bestehenden Daten veraendern. Jahresangaben muessen ganze Jahreszahlen sein; wenn beide Lebensdaten bekannt sind, darf das Todesjahr nicht vor dem Geburtsjahr liegen. Bei ungespeicherten Aenderungen MUST ein Vorgang, der den aktuellen Stammbaum ersetzen oder verwerfen wuerde, eine Bestaetigung verlangen.
+Das System MUST fehlerhafte Eingaben vor dem Speichern sichtbar markieren und darf bei einem Validierungsfehler keine gueltigen bestehenden Daten veraendern. Geburts-, Todes- und Ehe-Startdaten muessen dem Format `YYYY`, `YYYY-MM` oder `YYYY-MM-DD` entsprechen und gueltige Kalendertage enthalten; wenn zwei Daten mit den bekannten Komponenten sicher vergleichbar sind, darf eine bekannte Endzeit nicht vor dem zugehoerigen Start liegen. Bei ungespeicherten Aenderungen MUST ein Vorgang, der den aktuellen Stammbaum ersetzen oder verwerfen wuerde, eine Bestaetigung verlangen.
 
 #### Scenario: Ungueltige Lebensdaten ablehnen
-- **GIVEN** eine Person wird mit einem nicht-ganzzahligen Jahr oder einem Todesjahr vor dem Geburtsjahr bearbeitet
+- **GIVEN** eine Person wird mit einem nicht erlaubten Datumsformat, einem ungueltigen Kalendertag oder einem sicher frueheren Todesdatum bearbeitet
 - **WHEN** die Benutzerin die Aenderung speichert
 - **THEN** wird das Formular mit einem konkreten Fehler markiert und die zuletzt gueltigen Personendaten bleiben erhalten
+
+#### Scenario: Teilweise vergleichbare Lebensdaten bleiben zulaessig
+- **GIVEN** das Geburtsdatum ist `1900-05` und das Todesdatum `1900-05-01`
+- **WHEN** die Benutzerin die Person speichert
+- **THEN** wird die Eingabe akzeptiert, weil der unbekannte Tag des Geburtsdatums keinen sicheren Verstoss beweist
+
+#### Scenario: Ungueltiges Ehe-Startdatum ablehnen
+- **GIVEN** eine bestehende oder neue Ehe enthaelt ein ungueltiges Startdatum
+- **WHEN** die Benutzerin die Aenderung speichert
+- **THEN** wird das Startdatumsfeld markiert und die zuletzt gueltige Beziehung bleibt erhalten
 
 #### Scenario: Ungespeicherte Aenderungen bestaetigen
 - **GIVEN** der aktuelle Stammbaum wurde seit dem letzten Import oder Export geaendert

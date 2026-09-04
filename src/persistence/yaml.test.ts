@@ -11,8 +11,8 @@ const documentFixture: FamilyTreeDocument = {
       firstName: 'Anna',
       lastName: 'Weber',
       gender: 'woman',
-      birthYear: 1834,
-      deathYear: 1901,
+      birthYear: '1834',
+      deathYear: '1901',
       position: { x: 120, y: 80 },
       comment: 'Unsichere Zuordnung.',
     },
@@ -21,7 +21,7 @@ const documentFixture: FamilyTreeDocument = {
       firstName: 'Johann',
       lastName: 'Weber',
       gender: 'man',
-      birthYear: 1830,
+      birthYear: '1830',
       deathYear: null,
       position: { x: 320, y: 80 },
       comment: null,
@@ -31,7 +31,7 @@ const documentFixture: FamilyTreeDocument = {
       firstName: 'Sven',
       lastName: 'Weber',
       gender: 'man',
-      birthYear: 1963,
+      birthYear: '1963',
       deathYear: null,
       position: { x: 220, y: 260 },
       comment: null,
@@ -43,6 +43,7 @@ const documentFixture: FamilyTreeDocument = {
       type: 'marriage',
       fromId: 'woman-1',
       toId: 'man-1',
+      startDate: '1880-05-20',
       status: 'explicit',
       sourceUrl: 'https://example.org/register/28',
       comment: 'Standesamtliche Quelle.',
@@ -81,6 +82,73 @@ describe('family tree YAML persistence', () => {
 
     expect(yaml).toContain('schemaVersion: 1')
     expect(result).toEqual({ ok: true, value: documentFixture })
+  })
+
+  it('round-trips partial dates and normalises legacy numeric years', () => {
+    const datedDocument = {
+      ...documentFixture,
+      persons: documentFixture.persons.map((person, index) => ({
+        ...person,
+        birthYear: ['1900', '1900-05', '1900-05-20'][index],
+        deathYear: index === 0 ? '1970-08-12' : null,
+      })),
+    } as FamilyTreeDocument
+
+    const yaml = serializeFamilyTreeYaml(datedDocument)
+    const result = parseFamilyTreeYaml(yaml)
+
+    expect(result).toEqual({ ok: true, value: datedDocument })
+
+    const legacy = parseFamilyTreeYaml(`schemaVersion: 1
+persons:
+  - id: legacy-1
+    firstName: Anna
+    lastName: Weber
+    gender: woman
+    birthYear: 1900
+    deathYear: null
+    position: null
+relationships: []`)
+
+    expect(legacy).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        persons: [expect.objectContaining({ birthYear: '1900' })],
+      }),
+    })
+  })
+
+  it('imports older marriages without a start date', () => {
+    const result = parseFamilyTreeYaml(`schemaVersion: 1
+persons:
+  - id: woman-1
+    firstName: Anna
+    lastName: Weber
+    gender: woman
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: man-1
+    firstName: Johann
+    lastName: Weber
+    gender: man
+    birthYear: null
+    deathYear: null
+    position: null
+relationships:
+  - id: marriage-1
+    type: marriage
+    fromId: woman-1
+    toId: man-1
+    status: explicit
+    sourceUrl: null`)
+
+    expect(result).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        relationships: [expect.objectContaining({ id: 'marriage-1', startDate: null })],
+      }),
+    })
   })
 
   it('normalises whitespace-only comments during import', () => {
@@ -143,6 +211,46 @@ relationships:
     toId: man-1
     status: explicit
     sourceUrl: ftp://example.org/source`,
+    ],
+    [
+      'invalid calendar date',
+      `schemaVersion: 1
+persons:
+  - id: person-1
+    firstName: Anna
+    lastName: Weber
+    gender: woman
+    birthYear: 1900-02-29
+    deathYear: null
+    position: null
+relationships: []`,
+    ],
+    [
+      'invalid marriage start date',
+      `schemaVersion: 1
+persons:
+  - id: woman-1
+    firstName: Anna
+    lastName: Weber
+    gender: woman
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: man-1
+    firstName: Johann
+    lastName: Weber
+    gender: man
+    birthYear: null
+    deathYear: null
+    position: null
+relationships:
+  - id: marriage-1
+    type: marriage
+    fromId: woman-1
+    toId: man-1
+    startDate: 1900-02-29
+    status: explicit
+    sourceUrl: null`,
     ],
   ])('rejects %s without returning partial data', (_description, yaml) => {
     const result = parseFamilyTreeYaml(yaml)

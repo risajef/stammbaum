@@ -26,7 +26,7 @@ export interface BrowserFileEnvironment {
 
 const browserEnvironment = (): BrowserFileEnvironment => {
   if (typeof window === 'undefined') {
-    throw new Error('Der Dateizugriff ist nur im Browser verfuegbar.')
+    throw new Error('Der Dateizugriff ist nur im Browser verfügbar.')
   }
 
   const browserWindow = window as unknown as BrowserFileEnvironment
@@ -54,7 +54,7 @@ const openWithUpload = (environment: BrowserFileEnvironment): Promise<OpenedFile
       const file = input.files?.[0]
       if (!file) {
         cleanUp()
-        reject(new Error('Es wurde keine YAML-Datei ausgewaehlt.'))
+        reject(new Error('Es wurde keine YAML-Datei ausgewählt.'))
         return
       }
 
@@ -108,7 +108,7 @@ export const createBrowserFilePort = (
     if (environment.showOpenFilePicker) {
       const [handle] = await environment.showOpenFilePicker()
       if (!handle) {
-        throw new Error('Es wurde keine YAML-Datei ausgewaehlt.')
+        throw new Error('Es wurde keine YAML-Datei ausgewählt.')
       }
 
       const file = await handle.getFile()

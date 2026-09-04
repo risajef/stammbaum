@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
   Controls,
-  MiniMap,
   ReactFlow,
   useReactFlow,
   type Connection,
+  type NodeChange,
 } from '@xyflow/react'
 
 import { createEmptyDocument, createPerson, updatePerson } from './domain/person'
@@ -20,6 +20,7 @@ import type {
   DomainError,
   FamilyTreeDocument,
   PersonDraft,
+  Position,
   Relationship,
 } from './domain/types'
 import { projectFamilyTree, type GraphSelection } from './graph/graph-projection'
@@ -45,8 +46,62 @@ function FitViewOnPersonCount({ personCount }: { personCount: number }) {
   const { fitView } = useReactFlow()
 
   useEffect(() => {
-    void fitView({ padding: 0.2, minZoom: 0.25, maxZoom: 1.4 })
+    void fitView({ padding: 0.2, minZoom: 0.01, maxZoom: 1.4 })
   }, [fitView, personCount])
+
+  return null
+}
+
+interface CenterPersonOnSaveProps {
+  personId: string | null
+  surfaceRef: React.RefObject<HTMLDivElement | null>
+  onCentered: (personId: string, position: Position) => void
+}
+
+function CenterPersonOnSave({
+  personId,
+  surfaceRef,
+  onCentered,
+}: CenterPersonOnSaveProps) {
+  const { fitView, getNode, screenToFlowPosition } = useReactFlow()
+
+  useEffect(() => {
+    if (!personId) {
+      return
+    }
+
+    let isActive = true
+    const centerPerson = async () => {
+      await fitView({ padding: 0.2, minZoom: 0.01, maxZoom: 1.4 })
+      if (!isActive) {
+        return
+      }
+
+      const surface = surfaceRef.current
+      const surfaceBounds = surface?.getBoundingClientRect()
+      if (!surfaceBounds) {
+        return
+      }
+
+      const flowCenter = screenToFlowPosition({
+        x: surfaceBounds.left + surfaceBounds.width / 2,
+        y: surfaceBounds.top + surfaceBounds.height / 2,
+      })
+      const node = getNode(personId)
+      const nodeWidth = node?.measured?.width ?? node?.width ?? 148
+      const nodeHeight = node?.measured?.height ?? node?.height ?? 88
+
+      onCentered(personId, {
+        x: Math.round(flowCenter.x - nodeWidth / 2),
+        y: Math.round(flowCenter.y - nodeHeight / 2),
+      })
+    }
+
+    void centerPerson()
+    return () => {
+      isActive = false
+    }
+  }, [fitView, getNode, onCentered, personId, screenToFlowPosition, surfaceRef])
 
   return null
 }
@@ -61,10 +116,15 @@ function App() {
   const [workflowError, setWorkflowError] = useState<string | null>(null)
   const [saveState, setSaveState] = useState('Nicht gespeichert')
   const [filePort] = useState(() => createBrowserFilePort())
+  const [temporaryPositions, setTemporaryPositions] = useState<Map<string, Position>>(
+    () => new Map(),
+  )
+  const [personToCenter, setPersonToCenter] = useState<string | null>(null)
+  const flowSurfaceRef = useRef<HTMLDivElement>(null)
 
   const projection = useMemo(
-    () => projectFamilyTree(document, selection),
-    [document, selection],
+    () => projectFamilyTree(document, selection, temporaryPositions),
+    [document, selection, temporaryPositions],
   )
   const selectedPerson =
     selection?.type === 'person'
@@ -86,6 +146,21 @@ function App() {
   const targetPerson = inspectorConnection
     ? document.persons.find((person) => person.id === inspectorConnection.targetId) ?? null
     : null
+  const handleNodesChange = (changes: NodeChange[]) => {
+    if (!changes.some((change) => change.type === 'position' && change.position)) {
+      return
+    }
+
+    setTemporaryPositions((current) => {
+      const next = new Map(current)
+      changes.forEach((change) => {
+        if (change.type === 'position' && change.position) {
+          next.set(change.id, { x: change.position.x, y: change.position.y })
+        }
+      })
+      return next
+    })
+  }
   const handleConnect = (connection: Connection) => {
     if (!connection.source || !connection.target) {
       return
@@ -97,6 +172,7 @@ function App() {
   }
 
   const handlePersonSave = (draft: PersonDraft): DomainError | null => {
+    const isNewPerson = !selectedPerson || isCreatingPerson
     const result = selectedPerson && !isCreatingPerson
       ? updatePerson(document, selectedPerson.id, draft)
       : createPerson(document, draft)
@@ -111,6 +187,8 @@ function App() {
       : result.value.persons[result.value.persons.length - 1]?.id
 
     setDocument(nextDocument)
+    setTemporaryPositions(new Map())
+    setPersonToCenter(isNewPerson ? savedPersonId ?? null : null)
     setIsDirty(true)
     setSaveState('Ungespeichert')
     setWorkflowError(null)
@@ -121,6 +199,15 @@ function App() {
     setSelection(savedPerson ? { type: 'person', id: savedPerson.id } : undefined)
     return null
   }
+
+  const handlePersonCentered = useCallback((personId: string, position: Position) => {
+    setTemporaryPositions((current) => {
+      const next = new Map(current)
+      next.set(personId, position)
+      return next
+    })
+    setPersonToCenter(null)
+  }, [])
 
   const handlePersonCancel = () => {
     setIsCreatingPerson(false)
@@ -143,6 +230,7 @@ function App() {
     const result: ReturnType<typeof createMarriage> = connectionDraft
       ? draft.relationshipType === 'marriage'
         ? createMarriage(document, sourceId, targetId, {
+            startDate: draft.startDate.trim() || null,
             status: draft.status,
             sourceUrl,
             comment: draft.comment,
@@ -154,6 +242,7 @@ function App() {
           })
       : selectedRelationship
         ? updateRelationship(document, selectedRelationship.id, {
+          startDate: draft.startDate.trim() || null,
             status: draft.status,
             sourceUrl,
             comment: draft.comment,
@@ -176,6 +265,7 @@ function App() {
     const nextDocument = synchronizeInferredRelationships(result.value)
 
     setDocument(nextDocument)
+    setTemporaryPositions(new Map())
     setIsDirty(true)
     setSaveState('Ungespeichert')
     setWorkflowError(null)
@@ -205,6 +295,7 @@ function App() {
     }
 
     setDocument(synchronizeInferredRelationships(result.value))
+    setTemporaryPositions(new Map())
     setIsDirty(true)
     setSaveState('Ungespeichert')
     setSelection(undefined)
@@ -217,7 +308,7 @@ function App() {
   }
 
   const canReplaceDocument = () =>
-    !isDirty || window.confirm('Ungespeicherte Aenderungen verwerfen?')
+    !isDirty || window.confirm('Ungespeicherte Änderungen verwerfen?')
 
   const handleNewDocument = () => {
     if (!canReplaceDocument()) {
@@ -225,6 +316,7 @@ function App() {
     }
 
     setDocument(createEmptyDocument())
+    setTemporaryPositions(new Map())
     clearTransientState()
     setIsDirty(false)
     setFileName('stammbaum.yaml')
@@ -246,10 +338,11 @@ function App() {
       }
 
       setDocument(synchronizeInferredRelationships(result.value))
+      setTemporaryPositions(new Map())
       clearTransientState()
       setIsDirty(false)
       setFileName(openedFile.name)
-      setSaveState(`Geoeffnet: ${openedFile.name}`)
+      setSaveState(`Geöffnet: ${openedFile.name}`)
       setWorkflowError(null)
     } catch (error: unknown) {
       setWorkflowError(
@@ -298,7 +391,7 @@ function App() {
             Neu
           </button>
           <button className="toolbar-button" type="button" onClick={handleOpenFile}>
-            Oeffnen
+            Öffnen
           </button>
           <button
             className="toolbar-button toolbar-button--accent"
@@ -314,61 +407,49 @@ function App() {
       {workflowError && <p className="workflow-error" role="alert">{workflowError}</p>}
 
       <div className="workspace-grid">
-        <aside className="left-rail" aria-label="Arbeitsbereich">
-          <div className="rail-section">
-            <p className="section-label">Werkzeuge</p>
-            <button
-              aria-label="Person anlegen"
-              className="add-person-button"
-              type="button"
-              onClick={() => {
-                setSelection(undefined)
-                setConnectionDraft(null)
-                setIsCreatingPerson(true)
-              }}
-            >
-              <span aria-hidden="true">+</span>
-              Person
-            </button>
-          </div>
-          <div className="rail-section rail-section--lower">
-            <p className="section-label">Legende</p>
-            <div className="legend-row">
-              <span className="legend-line legend-line--solid" aria-hidden="true" />
-              <span>Explizit</span>
-            </div>
-            <div className="legend-row">
-              <span className="legend-line legend-line--dashed" aria-hidden="true" />
-              <span>Geschlussfolgert</span>
-            </div>
-          </div>
-        </aside>
-
-        <section className="canvas-panel" aria-label="Stammbaum-Arbeitsflaeche">
+        <section className="canvas-panel" aria-label="Stammbaum-Arbeitsfläche">
           <div className="canvas-heading">
             <div>
-              <p className="section-label">Uebersicht</p>
+              <p className="section-label">Übersicht</p>
               <p className="canvas-caption">
                 {document.persons.length === 0
                   ? 'Leer'
                   : `${document.persons.length} ${document.persons.length === 1 ? 'Person' : 'Personen'}`}
               </p>
             </div>
-            <span className="canvas-status">
-              <span className="status-dot" aria-hidden="true" />
-              Lokal
-            </span>
+            <div className="canvas-heading-actions">
+              <button
+                aria-label="Person anlegen"
+                className="add-person-button"
+                title="Person anlegen"
+                type="button"
+                onClick={() => {
+                  setSelection(undefined)
+                  setConnectionDraft(null)
+                  setIsCreatingPerson(true)
+                }}
+              >
+                <span aria-hidden="true">+</span>
+              </button>
+              <span className="canvas-status">
+                <span className="status-dot" aria-hidden="true" />
+                Lokal
+              </span>
+            </div>
           </div>
-          <div className="flow-surface">
+          <div ref={flowSurfaceRef} className="flow-surface">
             <ReactFlow
               nodes={projection.nodes}
               edges={projection.edges}
               nodeTypes={nodeTypes}
               fitView
               fitViewOptions={projection.fitViewOptions}
+              minZoom={0.01}
+              maxZoom={1.4}
               nodesConnectable
-              nodesDraggable={false}
+              nodesDraggable
               panOnDrag
+              onNodesChange={handleNodesChange}
               onNodeClick={(_event, node) => {
                 setIsCreatingPerson(false)
                 setConnectionDraft(null)
@@ -388,13 +469,13 @@ function App() {
               proOptions={proOptions}
             >
               <FitViewOnPersonCount personCount={document.persons.length} />
+              <CenterPersonOnSave
+                personId={personToCenter}
+                surfaceRef={flowSurfaceRef}
+                onCentered={handlePersonCentered}
+              />
               <Background color="#d9d0c2" gap={24} size={1} />
               <Controls showInteractive={false} position="bottom-left" />
-              <MiniMap
-                nodeColor="#c6654c"
-                maskColor="rgba(244, 240, 232, 0.72)"
-                position="bottom-right"
-              />
             </ReactFlow>
             {document.persons.length === 0 && (
               <div className="empty-canvas" aria-live="polite">
@@ -436,7 +517,7 @@ function App() {
           ) : (
             <div className="inspector-placeholder inspector-placeholder--empty">
               <span className="inspector-kicker">Inspektor</span>
-              <h2>Waehle ein Objekt</h2>
+              <h2>Wähle ein Objekt</h2>
               <p>Personen und Beziehungen erscheinen hier mit ihren Details.</p>
             </div>
           )}

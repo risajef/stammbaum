@@ -2,6 +2,7 @@ import { parse, stringify } from 'yaml'
 import { z } from 'zod'
 
 import { validateFamilyTreeDocument } from '../domain/document-validation'
+import { normalizePartialDate } from '../domain/life-date'
 import type { DomainError, FamilyTreeDocument, Result } from '../domain/types'
 
 const positionSchema = z
@@ -17,8 +18,8 @@ const personSchema = z
     firstName: z.string().trim().min(1),
     lastName: z.string().trim().min(1),
     gender: z.enum(['woman', 'man']).nullable().optional(),
-    birthYear: z.number().int().nullable().optional(),
-    deathYear: z.number().int().nullable().optional(),
+    birthYear: z.union([z.string().trim(), z.number().int()]).nullable().optional(),
+    deathYear: z.union([z.string().trim(), z.number().int()]).nullable().optional(),
     position: positionSchema.nullable().optional(),
     comment: z.string().nullable().optional(),
   })
@@ -37,6 +38,7 @@ const relationshipSchema = z
     type: z.enum(['marriage', 'parent-child']),
     fromId: z.string().min(1),
     toId: z.string().min(1),
+    startDate: z.union([z.string().trim(), z.number().int()]).nullable().optional(),
     status: z.enum(['explicit', 'inferred']),
     sourceUrl: z.string().nullable().optional(),
     comment: z.string().nullable().optional(),
@@ -67,7 +69,7 @@ const zodError = (validationError: z.ZodError): DomainError => {
   const issue = validationError.issues[0]
   return error(
     'invalid-yaml-structure',
-    issue?.message ?? 'Die YAML-Struktur ist ungueltig.',
+    issue?.message ?? 'Die YAML-Struktur ist ungültig.',
     issue?.path.join('.') || undefined,
   )
 }
@@ -77,17 +79,24 @@ const normaliseDocument = (rawDocument: z.infer<typeof rawDocumentSchema>): Fami
   persons: rawDocument.persons.map((person) => ({
     ...person,
     gender: person.gender ?? null,
-    birthYear: person.birthYear ?? null,
-    deathYear: person.deathYear ?? null,
+    birthYear: normalizePartialDate(person.birthYear),
+    deathYear: normalizePartialDate(person.deathYear),
     position: person.position ?? null,
     comment: normaliseComment(person.comment),
   })),
-  relationships: rawDocument.relationships.map((relationship) => ({
-    ...relationship,
-    sourceUrl: relationship.sourceUrl ?? null,
-    comment: normaliseComment(relationship.comment),
-    inferredFrom: relationship.inferredFrom ?? null,
-  })),
+  relationships: rawDocument.relationships.map((relationship) => {
+    const { startDate, ...relationshipWithoutStartDate } = relationship
+
+    return {
+      ...relationshipWithoutStartDate,
+      ...(relationship.type === 'marriage'
+        ? { startDate: normalizePartialDate(startDate) }
+        : {}),
+      sourceUrl: relationship.sourceUrl ?? null,
+      comment: normaliseComment(relationship.comment),
+      inferredFrom: relationship.inferredFrom ?? null,
+    }
+  }),
 })
 
 export const parseFamilyTreeYaml = (source: string): Result<FamilyTreeDocument> => {
@@ -97,7 +106,7 @@ export const parseFamilyTreeYaml = (source: string): Result<FamilyTreeDocument> 
   } catch {
     return {
       ok: false,
-      error: error('invalid-yaml', 'Die Datei enthaelt keine gueltige YAML-Syntax.'),
+      error: error('invalid-yaml', 'Die Datei enthält keine gültige YAML-Syntax.'),
     }
   }
 
@@ -116,10 +125,24 @@ export const parseFamilyTreeYaml = (source: string): Result<FamilyTreeDocument> 
 }
 
 export const serializeFamilyTreeYaml = (document: FamilyTreeDocument): string => {
-  const validationError = validateFamilyTreeDocument(document)
+  const normalizedDocument: FamilyTreeDocument = {
+    ...document,
+    persons: document.persons.map((person) => ({
+      ...person,
+      birthYear: normalizePartialDate(person.birthYear),
+      deathYear: normalizePartialDate(person.deathYear),
+    })),
+    relationships: document.relationships.map((relationship) => ({
+      ...relationship,
+      ...(relationship.type === 'marriage'
+        ? { startDate: normalizePartialDate(relationship.startDate) }
+        : {}),
+    })),
+  }
+  const validationError = validateFamilyTreeDocument(normalizedDocument)
   if (validationError) {
     throw new Error(validationError.message)
   }
 
-  return stringify(document)
+  return stringify(normalizedDocument)
 }

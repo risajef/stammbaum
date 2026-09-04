@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Download, type Page } from '@playwright/test'
 
 const addPerson = async (
   page: Page,
@@ -50,6 +50,14 @@ const connectPeople = async (page: Page, sourceName: string, targetName: string)
   await page.mouse.up()
 }
 
+const readDownload = async (download: Download) => {
+  const stream = await download.createReadStream()
+  if (!stream) throw new Error('Download konnte nicht gelesen werden.')
+  const chunks: Buffer[] = []
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk))
+  return Buffer.concat(chunks).toString('utf8')
+}
+
 test.describe('automatische Familienlogik', () => {
   test('ordnet Familie automatisch und leitet den zweiten Elternteil ab', async ({ page }) => {
     await page.goto('/')
@@ -80,11 +88,21 @@ test.describe('automatische Familienlogik', () => {
     await expect(page.getByText(/Automatisch abgeleitet/).first()).toBeVisible()
   })
 
-  test('laesst keine manuelle Knotenbewegung zu', async ({ page }) => {
+  test('verschiebt Nodes temporär ohne ihre Position zu speichern', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'showSaveFilePicker', {
+        configurable: true,
+        value: undefined,
+      })
+    })
     await page.goto('/')
     await addPerson(page, 'Anna', 'Weber', 'woman')
 
     const node = page.locator('.person-node').filter({ hasText: 'Anna Weber' })
+    const initialSave = page.waitForEvent('download')
+    await page.locator('.topbar-actions').getByRole('button', { name: 'Speichern' }).click()
+    await readDownload(await initialSave)
+
     const before = await node.boundingBox()
     if (!before) throw new Error('Personenknoten fehlt.')
 
@@ -93,20 +111,27 @@ test.describe('automatische Familienlogik', () => {
     await page.mouse.move(before.x + 180, before.y + 120, { steps: 10 })
     await page.mouse.up()
 
-    const after = await node.boundingBox()
-    if (!after) throw new Error('Personenknoten fehlt nach Drag.')
-    expect(Math.abs(after.x - before.x)).toBeLessThan(2)
-    expect(Math.abs(after.y - before.y)).toBeLessThan(2)
+    await expect.poll(async () => {
+      const after = await node.boundingBox()
+      return after ? Math.hypot(after.x - before.x, after.y - before.y) : 0
+    }).toBeGreaterThan(20)
+    await expect(page.getByText('Gespeichert: stammbaum.yaml')).toBeVisible()
+
+    const savedAgain = page.waitForEvent('download')
+    await page.locator('.topbar-actions').getByRole('button', { name: 'Speichern' }).click()
+    const exportedYaml = await readDownload(await savedAgain)
+    expect(exportedYaml).toContain('position: null')
+    expect(exportedYaml).not.toMatch(/position:\n\s+x:/)
   })
 
-  test('laesst die Arbeitsflaeche per Drag verschieben', async ({ page }) => {
+  test('lässt die Arbeitsfläche per Drag verschieben', async ({ page }) => {
     await page.goto('/')
     await addPerson(page, 'Anna', 'Weber', 'woman')
 
     const surface = page.locator('.flow-surface')
     const surfaceBox = await surface.boundingBox()
     const viewport = page.locator('.react-flow__viewport')
-    if (!surfaceBox) throw new Error('Arbeitsflaeche fehlt.')
+    if (!surfaceBox) throw new Error('Arbeitsfläche fehlt.')
 
     const before = await viewport.evaluate((element) => getComputedStyle(element).transform)
     const startX = surfaceBox.x + 48
@@ -120,7 +145,26 @@ test.describe('automatische Familienlogik', () => {
       .not.toBe(before)
   })
 
-  test('ergaenzt sichere inferred-Beziehungen nach dem Import', async ({ page }) => {
+  test('erlaubt starkes Herauszoomen', async ({ page }) => {
+    await page.goto('/')
+    await addPerson(page, 'Anna', 'Weber', 'woman')
+
+    const zoomOut = page.locator('.react-flow__controls-zoomout')
+    for (let click = 0; click < 12; click += 1) {
+      if (await zoomOut.isDisabled()) break
+      await zoomOut.click()
+    }
+
+    const scale = await page.locator('.react-flow__viewport').evaluate((element) => {
+      const transform = getComputedStyle(element).transform
+      const match = transform.match(/^matrix\(([-\d.]+),/)
+      if (!match) throw new Error(`Unerwartete Viewport-Transformation: ${transform}`)
+      return Number(match[1])
+    })
+    expect(scale).toBeLessThan(0.3)
+  })
+
+  test('ergänzt sichere inferred-Beziehungen nach dem Import', async ({ page }) => {
     await page.addInitScript(() => {
       Object.defineProperty(window, 'showOpenFilePicker', {
         configurable: true,
@@ -167,7 +211,7 @@ relationships:
     sourceUrl: null
 `
     const chooserPromise = page.waitForEvent('filechooser')
-    await page.getByRole('button', { name: 'Oeffnen' }).click()
+    await page.getByRole('button', { name: 'Öffnen' }).click()
     const chooser = await chooserPromise
     await chooser.setFiles({ name: 'family.yaml', mimeType: 'application/yaml', buffer: Buffer.from(yaml) })
 

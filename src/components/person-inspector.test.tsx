@@ -23,19 +23,38 @@ describe('PersonInspector', () => {
     fireEvent.change(screen.getByLabelText('Vorname'), { target: { value: 'Anna' } })
     fireEvent.change(screen.getByLabelText('Nachname'), { target: { value: 'Weber' } })
     fireEvent.change(screen.getByLabelText('Geschlecht'), { target: { value: 'woman' } })
-    fireEvent.change(screen.getByLabelText('Geburtsjahr'), { target: { value: '1834' } })
-    fireEvent.change(screen.getByLabelText('Todesjahr'), { target: { value: '1901' } })
+    fireEvent.change(screen.getByLabelText('Geburtsdatum'), { target: { value: '1834' } })
+    fireEvent.change(screen.getByLabelText('Todesdatum'), { target: { value: '1901' } })
     fireEvent.click(screen.getByRole('button', { name: 'Person speichern' }))
 
     expect(onSave).toHaveBeenCalledWith({
       firstName: 'Anna',
       lastName: 'Weber',
       gender: 'woman',
-      birthYear: 1834,
-      deathYear: 1901,
+      birthYear: '1834',
+      deathYear: '1901',
       position: null,
       comment: null,
     })
+  })
+
+  it('submits birth and death as partial date strings from single fields', () => {
+    const onSave = vi.fn()
+
+    render(<PersonInspector person={null} onSave={onSave} onCancel={vi.fn()} />)
+
+    fireEvent.change(screen.getByLabelText('Vorname'), { target: { value: 'Anna' } })
+    fireEvent.change(screen.getByLabelText('Nachname'), { target: { value: 'Weber' } })
+    fireEvent.change(screen.getByLabelText('Geburtsdatum'), { target: { value: '1900-05' } })
+    fireEvent.change(screen.getByLabelText('Todesdatum'), { target: { value: '1970-08-12' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Person speichern' }))
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        birthYear: '1900-05',
+        deathYear: '1970-08-12',
+      }),
+    )
   })
 
   it('edits an existing person and keeps position out of the form changes', () => {
@@ -50,8 +69,8 @@ describe('PersonInspector', () => {
       firstName: 'Anna',
       lastName: 'Walter',
       gender: 'woman',
-      birthYear: 1834,
-      deathYear: 1901,
+      birthYear: '1834',
+      deathYear: '1901',
       position: { x: 100, y: 80 },
       comment: null,
     })
@@ -78,8 +97,8 @@ describe('PersonInspector', () => {
 
     render(<PersonInspector person={person} onSave={onSave} onCancel={onCancel} />)
 
-    fireEvent.change(screen.getByLabelText('Geburtsjahr'), { target: { value: '' } })
-    fireEvent.change(screen.getByLabelText('Todesjahr'), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText('Geburtsdatum'), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText('Todesdatum'), { target: { value: '' } })
     fireEvent.click(screen.getByRole('button', { name: 'Person speichern' }))
     fireEvent.click(screen.getByRole('button', { name: 'Verwerfen' }))
 

@@ -4,6 +4,10 @@ export type RelationshipType = 'marriage' | 'parent-child'
 
 export type RelationshipStatus = 'explicit' | 'inferred'
 
+export type PartialDate = string
+
+export type DateValue = PartialDate | number
+
 export interface Position {
   x: number
   y: number
@@ -14,8 +18,8 @@ export interface Person {
   firstName: string
   lastName: string
   gender: Gender | null
-  birthYear: number | null
-  deathYear: number | null
+  birthYear: DateValue | null
+  deathYear: DateValue | null
   position: Position | null
   comment?: string | null
 }
@@ -30,6 +34,7 @@ export interface Relationship {
   type: RelationshipType
   fromId: string
   toId: string
+  startDate?: PartialDate | null
   status: RelationshipStatus
   sourceUrl: string | null
   comment?: string | null
@@ -46,8 +51,8 @@ export interface PersonDraft {
   firstName: string
   lastName: string
   gender?: Gender | null
-  birthYear?: number | null
-  deathYear?: number | null
+  birthYear?: DateValue | null
+  deathYear?: DateValue | null
   position?: Position | null
   comment?: string | null
 }

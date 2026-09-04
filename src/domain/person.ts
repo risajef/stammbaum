@@ -6,10 +6,12 @@ import type {
   Position,
   Result,
 } from './types'
+import {
+  comparePartialDates,
+  isValidPartialDate,
+  normalizePartialDate,
+} from './life-date'
 import { validateGenderChange } from './relationship'
-
-const emptyValue = (value: number | null | undefined): number | null =>
-  value === undefined ? null : value
 
 const normaliseComment = (value: string | null | undefined): string | null => {
   const comment = value?.trim() ?? ''
@@ -31,13 +33,17 @@ const error = (
   entityId?: string,
 ): DomainError => ({ code, message, field, entityId })
 
-const validateYear = (value: number | null, field: string): DomainError | null => {
+const validateDate = (value: number | string | null, field: string): DomainError | null => {
   if (value === null) {
     return null
   }
 
-  if (!Number.isInteger(value)) {
-    return error('invalid-year', 'Das Jahr muss eine ganze Zahl sein.', field)
+  if (!isValidPartialDate(value)) {
+    return error(
+      'invalid-date',
+      'Das Datum muss im Format YYYY, YYYY-MM oder YYYY-MM-DD angegeben werden.',
+      field,
+    )
   }
 
   return null
@@ -60,8 +66,8 @@ const normalisePerson = (id: string, draft: PersonDraft): Person => ({
   firstName: draft.firstName.trim(),
   lastName: draft.lastName.trim(),
   gender: draft.gender ?? null,
-  birthYear: emptyValue(draft.birthYear),
-  deathYear: emptyValue(draft.deathYear),
+  birthYear: normalizePartialDate(draft.birthYear),
+  deathYear: normalizePartialDate(draft.deathYear),
   position: draft.position ?? null,
   comment: normaliseComment(draft.comment),
 })
@@ -79,24 +85,24 @@ const validatePerson = (person: Person): DomainError | null => {
     return error('invalid-gender', 'Das Geschlecht muss Frau oder Mann sein.', 'gender', person.id)
   }
 
-  const birthYearError = validateYear(person.birthYear, 'birthYear')
-  if (birthYearError) {
-    return { ...birthYearError, entityId: person.id }
+  const birthDateError = validateDate(person.birthYear, 'birthYear')
+  if (birthDateError) {
+    return { ...birthDateError, entityId: person.id }
   }
 
-  const deathYearError = validateYear(person.deathYear, 'deathYear')
-  if (deathYearError) {
-    return { ...deathYearError, entityId: person.id }
+  const deathDateError = validateDate(person.deathYear, 'deathYear')
+  if (deathDateError) {
+    return { ...deathDateError, entityId: person.id }
   }
 
   if (
     person.birthYear !== null &&
     person.deathYear !== null &&
-    person.deathYear < person.birthYear
+    comparePartialDates(person.deathYear, person.birthYear) === -1
   ) {
     return error(
       'invalid-life-span',
-      'Das Todesjahr darf nicht vor dem Geburtsjahr liegen.',
+      'Das Todesdatum darf nicht vor dem Geburtsdatum liegen.',
       'deathYear',
       person.id,
     )

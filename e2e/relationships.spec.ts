@@ -5,11 +5,15 @@ const addPerson = async (
   firstName: string,
   lastName: string,
   gender: 'woman' | 'man' = 'woman',
+  deathDate?: string,
 ) => {
   await page.getByRole('button', { name: 'Person anlegen' }).click()
   await page.getByLabel('Vorname').fill(firstName)
   await page.getByLabel('Nachname').fill(lastName)
   await page.getByLabel('Geschlecht').selectOption(gender)
+  if (deathDate) {
+    await page.getByLabel('Todesdatum').fill(deathDate)
+  }
   await page.getByRole('button', { name: 'Person speichern' }).click()
   await expect(page.getByText(`${firstName} ${lastName}`)).toBeVisible()
 }
@@ -63,7 +67,7 @@ const connectPeople = async (
 }
 
 test.describe('direkte Beziehungen', () => {
-  test('legt eine Ehe an und waehlt die neue Kante aus', async ({ page }) => {
+  test('legt eine Ehe an und wählt die neue Kante aus', async ({ page }) => {
     await page.goto('/')
     await addPerson(page, 'Anna', 'Weber', 'woman')
     await addPerson(page, 'Hans', 'Weber', 'man')
@@ -71,10 +75,25 @@ test.describe('direkte Beziehungen', () => {
     await connectPeople(page, 'Anna Weber', 'Hans Weber')
     await expect(page.getByRole('heading', { name: 'Beziehung anlegen' })).toBeVisible()
     await page.getByLabel('Beziehungstyp').selectOption('marriage')
+    await page.getByLabel('Ehebeginn').fill('1880-05')
     await page.getByRole('button', { name: 'Beziehung speichern' }).click()
 
     await expect(page.locator('.relationship-edge')).toHaveCount(1)
+    await expect(page.locator('.relationship-edge--marriage')).toHaveCount(1)
+    await expect(page.getByLabel('Ehebeginn')).toHaveValue('1880-05')
     await expect(page.getByRole('heading', { name: 'Beziehung bearbeiten' })).toBeVisible()
+  })
+
+  test('zeigt das implizite Ende einer Ehe aus dem früheren Tod', async ({ page }) => {
+    await page.goto('/')
+    await addPerson(page, 'Anna', 'Weber', 'woman', '1925-08-12')
+    await addPerson(page, 'Hans', 'Weber', 'man', '1920-03-01')
+
+    await connectPeople(page, 'Anna Weber', 'Hans Weber')
+    await page.getByLabel('Beziehungstyp').selectOption('marriage')
+    await page.getByRole('button', { name: 'Beziehung speichern' }).click()
+
+    await expect(page.getByLabel('Implizites Eheende')).toHaveText('1920-03-01')
   })
 
   test('legt eine gerichtete Eltern-Kind-Beziehung an', async ({ page }) => {
@@ -87,6 +106,7 @@ test.describe('direkte Beziehungen', () => {
     await page.getByRole('button', { name: 'Beziehung speichern' }).click()
 
     await expect(page.locator('.relationship-edge')).toHaveCount(1)
+    await expect(page.locator('.relationship-edge--parent-child')).toHaveCount(1)
     await expect(page.getByRole('heading', { name: 'Beziehung bearbeiten' })).toBeVisible()
     await expect(page.getByLabel('Beziehungstyp')).toHaveValue('parent-child')
   })
@@ -101,10 +121,10 @@ test.describe('direkte Beziehungen', () => {
     await page.getByRole('button', { name: 'Verwerfen' }).click()
 
     await expect(page.locator('.relationship-edge')).toHaveCount(0)
-    await expect(page.getByRole('heading', { name: 'Waehle ein Objekt' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Wähle ein Objekt' })).toBeVisible()
   })
 
-  test('weist ein ungueltiges Ehe-Ziel vor dem Commit zurueck', async ({ page }) => {
+  test('weist ein ungültiges Ehe-Ziel vor dem Commit zurück', async ({ page }) => {
     await page.goto('/')
     await addPerson(page, 'Anna', 'Weber')
     await addPerson(page, 'Lina', 'Weber')

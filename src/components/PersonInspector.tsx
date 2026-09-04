@@ -26,13 +26,7 @@ const valuesFromPerson = (person: Person | null): PersonFormValues => ({
   comment: person?.comment ?? '',
 })
 
-const yearFromValue = (value: string): number | null => {
-  if (!value.trim()) {
-    return null
-  }
-
-  return Number(value)
-}
+const dateFromValue = (value: string): string | null => value.trim() || null
 
 function PersonInspector({ person, onSave, onCancel }: PersonInspectorProps) {
   const [values, setValues] = useState(() => valuesFromPerson(person))
@@ -56,8 +50,8 @@ function PersonInspector({ person, onSave, onCancel }: PersonInspectorProps) {
       firstName: values.firstName,
       lastName: values.lastName,
       gender: values.gender || null,
-      birthYear: yearFromValue(values.birthYear),
-      deathYear: yearFromValue(values.deathYear),
+      birthYear: dateFromValue(values.birthYear),
+      deathYear: dateFromValue(values.deathYear),
       position: person?.position ?? null,
       comment: values.comment.trim() || null,
     }
@@ -125,24 +119,26 @@ function PersonInspector({ person, onSave, onCancel }: PersonInspectorProps) {
 
         <div className="form-row">
           <label className="form-field">
-            <span>Geburtsjahr</span>
+            <span>Geburtsdatum</span>
             <input
               aria-invalid={Boolean(inputError('birthYear'))}
-              aria-label="Geburtsjahr"
+              aria-label="Geburtsdatum"
               inputMode="numeric"
-              type="number"
+              maxLength={10}
+              placeholder="YYYY-MM-DD"
               value={values.birthYear}
               onChange={(event) => updateValue('birthYear', event.target.value)}
             />
             {inputError('birthYear') && <small className="field-error">{inputError('birthYear')}</small>}
           </label>
           <label className="form-field">
-            <span>Todesjahr</span>
+            <span>Todesdatum</span>
             <input
               aria-invalid={Boolean(inputError('deathYear'))}
-              aria-label="Todesjahr"
+              aria-label="Todesdatum"
               inputMode="numeric"
-              type="number"
+              maxLength={10}
+              placeholder="YYYY-MM-DD"
               value={values.deathYear}
               onChange={(event) => updateValue('deathYear', event.target.value)}
             />

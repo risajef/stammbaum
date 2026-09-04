@@ -1,9 +1,19 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import App from './App'
 
 describe('application workbench', () => {
+  it('places person creation in the overview instead of a tool rail', () => {
+    render(<App />)
+
+    const overview = screen.getByRole('region', { name: 'Stammbaum-Arbeitsfläche' })
+
+    expect(within(overview).getByRole('button', { name: 'Person anlegen' })).toBeInTheDocument()
+    expect(screen.getByText('Übersicht')).toBeInTheDocument()
+    expect(screen.queryByRole('complementary', { name: 'Arbeitsbereich' })).not.toBeInTheDocument()
+  })
+
   it('adds a person through the inspector and displays it on the canvas', async () => {
     render(<App />)
 

@@ -1,13 +1,22 @@
+import {
+  comparePartialDates,
+  isValidPartialDate,
+  normalizePartialDate,
+} from './life-date'
 import type {
+  DateValue,
   DomainError,
   FamilyTreeDocument,
   Gender,
+  PartialDate,
+  Person,
   Relationship,
   RelationshipStatus,
   Result,
 } from './types'
 
 export interface RelationshipOptions {
+  startDate?: DateValue | null
   status?: RelationshipStatus
   sourceUrl?: string | null
   comment?: string | null
@@ -32,6 +41,48 @@ const error = (
 const getPerson = (document: FamilyTreeDocument, personId: string) =>
   document.persons.find((person) => person.id === personId)
 
+const marriageStartDate = (
+  value: DateValue | null | undefined,
+): Result<PartialDate | null> => {
+  const startDate = normalizePartialDate(value)
+  if (!isValidPartialDate(startDate)) {
+    return {
+      ok: false,
+      error: {
+        code: 'invalid-date',
+        message: 'Das Datum muss im Format YYYY, YYYY-MM oder YYYY-MM-DD angegeben werden.',
+        field: 'startDate',
+      },
+    }
+  }
+
+  return { ok: true, value: startDate }
+}
+
+const validateMarriageStartDate = (
+  document: FamilyTreeDocument,
+  fromId: string,
+  toId: string,
+  startDate: PartialDate | null,
+): DomainError | null => {
+  if (startDate === null) {
+    return null
+  }
+
+  for (const personId of [fromId, toId]) {
+    const deathDate = getPerson(document, personId)?.deathYear
+    if (deathDate !== null && deathDate !== undefined && comparePartialDates(deathDate, startDate) === -1) {
+      return {
+        code: 'invalid-marriage-span',
+        message: 'Das Eheende darf nicht vor dem Ehebeginn liegen.',
+        field: 'startDate',
+      }
+    }
+  }
+
+  return null
+}
+
 const relationshipOptions = (
   options: RelationshipOptions,
 ): Result<{ status: RelationshipStatus; sourceUrl: string | null; comment: string | null }> => {
@@ -39,7 +90,7 @@ const relationshipOptions = (
   if (status !== 'explicit' && status !== 'inferred') {
     return {
       ok: false,
-      error: error('invalid-status', 'Der Beziehungsstatus ist ungueltig.'),
+      error: error('invalid-status', 'Der Beziehungsstatus ist ungültig.'),
     }
   }
 
@@ -59,7 +110,7 @@ const relationshipOptions = (
       ok: false,
       error: {
         code: 'invalid-source-url',
-        message: 'Die Quelle muss eine gueltige HTTP- oder HTTPS-URL sein.',
+        message: 'Die Quelle muss eine gültige HTTP- oder HTTPS-URL sein.',
         field: 'sourceUrl',
       },
     }
@@ -107,7 +158,7 @@ export const validateGenderChange = (
     if (!remainsValid) {
       return error(
         'invalid-marriage-role',
-        'Die Geschlechtsaenderung wuerde eine bestehende Ehe ungueltig machen.',
+        'Die Geschlechtsänderung würde eine bestehende Ehe ungültig machen.',
         personId,
       )
     }
@@ -135,7 +186,7 @@ export const createMarriage = (
   if (!firstPerson || !secondPerson) {
     return {
       ok: false,
-      error: error('person-not-found', 'Beide Personen muessen vorhanden sein.'),
+      error: error('person-not-found', 'Beide Personen müssen vorhanden sein.'),
     }
   }
 
@@ -169,11 +220,27 @@ export const createMarriage = (
     return metadata
   }
 
+  const startDateResult = marriageStartDate(options.startDate)
+  if (!startDateResult.ok) {
+    return startDateResult
+  }
+
+  const dateError = validateMarriageStartDate(
+    document,
+    fromId,
+    toId,
+    startDateResult.value,
+  )
+  if (dateError) {
+    return { ok: false, error: dateError }
+  }
+
   const relationship: Relationship = {
     id: idFactory(),
     type: 'marriage',
     fromId,
     toId,
+    startDate: startDateResult.value,
     ...metadata.value,
     inferredFrom: null,
   }
@@ -185,6 +252,31 @@ export const createMarriage = (
       relationships: [...document.relationships, relationship],
     },
   }
+}
+
+export const getImplicitMarriageEndDate = (
+  relationship: Relationship,
+  persons: readonly Person[],
+): PartialDate | null => {
+  if (relationship.type !== 'marriage') {
+    return null
+  }
+
+  const firstPerson = persons.find((person) => person.id === relationship.fromId)
+  const secondPerson = persons.find((person) => person.id === relationship.toId)
+  const firstDeathDate = firstPerson?.deathYear
+  const secondDeathDate = secondPerson?.deathYear
+  if (firstDeathDate === null || firstDeathDate === undefined ||
+      secondDeathDate === null || secondDeathDate === undefined) {
+    return null
+  }
+
+  const comparison = comparePartialDates(firstDeathDate, secondDeathDate)
+  if (comparison === null) {
+    return null
+  }
+
+  return normalizePartialDate(comparison <= 0 ? firstDeathDate : secondDeathDate)
 }
 
 export const createParentChild = (
@@ -204,7 +296,7 @@ export const createParentChild = (
   if (!getPerson(document, parentId) || !getPerson(document, childId)) {
     return {
       ok: false,
-      error: error('person-not-found', 'Elternteil und Kind muessen vorhanden sein.'),
+      error: error('person-not-found', 'Elternteil und Kind müssen vorhanden sein.'),
     }
   }
 
@@ -265,7 +357,7 @@ export const removeRelationship = (
       ok: false,
       error: error(
         'automatic-relationship',
-        'Automatische Beziehungen werden ueber ihre Voraussetzungen entfernt.',
+        'Automatische Beziehungen werden über ihre Voraussetzungen entfernt.',
         relationshipId,
       ),
     }
@@ -309,10 +401,33 @@ export const updateRelationship = (
       ok: false,
       error: error(
         'invalid-status',
-        'Automatisch abgeleitete Beziehungen muessen geschlussfolgert bleiben.',
+        'Automatisch abgeleitete Beziehungen müssen geschlussfolgert bleiben.',
         relationshipId,
       ),
     }
+  }
+
+  const startDateResult = currentRelationship.type === 'marriage'
+    ? marriageStartDate(
+        changes.startDate === undefined
+          ? currentRelationship.startDate
+          : changes.startDate,
+      )
+    : { ok: true as const, value: null }
+  if (!startDateResult.ok) {
+    return startDateResult
+  }
+
+  const dateError = currentRelationship.type === 'marriage'
+    ? validateMarriageStartDate(
+        document,
+        currentRelationship.fromId,
+        currentRelationship.toId,
+        startDateResult.value,
+      )
+    : null
+  if (dateError) {
+    return { ok: false, error: dateError }
   }
 
   const metadata = relationshipOptions({
@@ -330,6 +445,9 @@ export const updateRelationship = (
   relationships[relationshipIndex] = {
     ...currentRelationship,
     ...metadata.value,
+    ...(currentRelationship.type === 'marriage'
+      ? { startDate: startDateResult.value }
+      : {}),
     inferredFrom: currentRelationship.inferredFrom ?? null,
   }
 

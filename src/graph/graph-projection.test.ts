@@ -40,6 +40,7 @@ const documentFixture: FamilyTreeDocument = {
       type: 'marriage',
       fromId: 'woman-1',
       toId: 'man-1',
+      startDate: '1880-05',
       status: 'explicit',
       sourceUrl: null,
     },
@@ -61,7 +62,7 @@ describe('family tree graph projection', () => {
     expect(projection.nodes[0]).toMatchObject({
       id: 'woman-1',
       type: 'person',
-      position: { x: 120, y: 80 },
+      position: { x: -160, y: 80 },
       selected: true,
       data: {
         personId: 'woman-1',
@@ -69,6 +70,23 @@ describe('family tree graph projection', () => {
         years: '1834 - 1901',
       },
     })
+  })
+
+  it('displays partial life dates without adding missing components', () => {
+    const document: FamilyTreeDocument = {
+      ...documentFixture,
+      persons: documentFixture.persons.map((person) =>
+        person.id === 'woman-1'
+          ? { ...person, birthYear: '1900-05', deathYear: '1970' }
+          : person,
+      ),
+    }
+
+    const projection = projectFamilyTree(document)
+
+    expect(projection.nodes.find((node) => node.id === 'woman-1')?.data.years).toBe(
+      '1900-05 - 1970',
+    )
   })
 
   it('assigns deterministic generation positions to family components', () => {
@@ -246,6 +264,111 @@ describe('family tree graph projection', () => {
     expect(child?.position.y).toBeGreaterThan(parentA?.position.y ?? 0)
   })
 
+  it('packs unrelated people compactly and centers the layout', () => {
+    const document: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        {
+          id: 'person-a',
+          firstName: 'Anna',
+          lastName: 'Weber',
+          gender: 'woman',
+          birthYear: 1900,
+          deathYear: null,
+          position: null,
+        },
+        {
+          id: 'person-b',
+          firstName: 'Hans',
+          lastName: 'Meyer',
+          gender: 'man',
+          birthYear: 1901,
+          deathYear: null,
+          position: null,
+        },
+        {
+          id: 'person-c',
+          firstName: 'Lina',
+          lastName: 'Graf',
+          gender: 'woman',
+          birthYear: 1902,
+          deathYear: null,
+          position: null,
+        },
+      ],
+      relationships: [],
+    }
+
+    const projection = projectFamilyTree(document)
+    const positions = projection.nodes.map((node) => node.position)
+    const sortedPositions = [...positions].sort((first, second) => first.x - second.x)
+    const leftEdge = Math.min(...positions.map((position) => position.x))
+    const rightEdge = Math.max(...positions.map((position) => position.x + 148))
+
+    expect(Math.abs(leftEdge + rightEdge)).toBeLessThan(2)
+    expect(sortedPositions[1].x - sortedPositions[0].x).toBeLessThan(210)
+  })
+
+  it('does not create global-index gaps between separate root families', () => {
+    const document: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        {
+          id: 'root-a',
+          firstName: 'Anna',
+          lastName: 'Weber',
+          gender: 'woman',
+          birthYear: 1800,
+          deathYear: null,
+          position: null,
+        },
+        ...Array.from({ length: 6 }, (_, index) => ({
+          id: `child-${index}`,
+          firstName: `Kind${index}`,
+          lastName: 'Weber',
+          gender: 'woman' as const,
+          birthYear: 1830 + index,
+          deathYear: null,
+          position: null,
+        })),
+        {
+          id: 'root-b',
+          firstName: 'Hans',
+          lastName: 'Meyer',
+          gender: 'man',
+          birthYear: 1801,
+          deathYear: null,
+          position: null,
+        },
+      ],
+      relationships: Array.from({ length: 6 }, (_, index) => ({
+        id: `parent-child-${index}`,
+        type: 'parent-child' as const,
+        fromId: 'root-a',
+        toId: `child-${index}`,
+        status: 'explicit' as const,
+        sourceUrl: null,
+      })),
+    }
+
+    const projection = projectFamilyTree(document)
+    const rootA = projection.nodes.find((node) => node.id === 'root-a')
+    const rootB = projection.nodes.find((node) => node.id === 'root-b')
+
+    expect(Math.abs((rootA?.position.x ?? 0) - (rootB?.position.x ?? 0))).toBeLessThan(220)
+  })
+
+  it('applies temporary positions without changing saved person positions', () => {
+    const temporaryPositions = new Map([['woman-1', { x: 900, y: 700 }]])
+    const projection = projectFamilyTree(documentFixture, undefined, temporaryPositions)
+
+    expect(projection.nodes.find((node) => node.id === 'woman-1')?.position).toEqual({
+      x: 900,
+      y: 700,
+    })
+    expect(documentFixture.persons[0].position).toEqual({ x: 100, y: 40 })
+  })
+
   it('projects marriage and parent-child edge semantics and status styles', () => {
     const projection = projectFamilyTree(documentFixture, {
       type: 'relationship',
@@ -257,7 +380,8 @@ describe('family tree graph projection', () => {
     expect(marriage).toMatchObject({
       source: 'woman-1',
       target: 'man-1',
-      type: 'straight',
+      type: 'simplebezier',
+      label: 'Ehe',
       selected: false,
       data: { relationshipType: 'marriage', status: 'explicit' },
     })
@@ -265,7 +389,8 @@ describe('family tree graph projection', () => {
     expect(parentChild).toMatchObject({
       source: 'man-1',
       target: 'child-1',
-      type: 'smoothstep',
+      type: 'simplebezier',
+      label: 'Eltern-Kind',
       selected: true,
       data: {
         relationshipType: 'parent-child',
@@ -282,7 +407,7 @@ describe('family tree graph projection', () => {
 
     expect(projection.fitViewOptions).toEqual({
       padding: 0.2,
-      minZoom: 0.25,
+      minZoom: 0.01,
       maxZoom: 1.4,
     })
   })
