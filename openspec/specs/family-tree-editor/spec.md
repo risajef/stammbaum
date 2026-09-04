@@ -136,17 +136,46 @@ Das System MUST jede Beziehung mit dem Status `explizit` oder `geschlussfolgert`
 
 ### Requirement: Beziehungen lassen sich direkt in der Arbeitsflaeche bedienen
 
-Das System MUST eine direkte Interaktion anbieten, mit der die Benutzerin eine Person auswaehlt, einen Beziehungstyp festlegt und eine zweite Person als Ziel verbindet, ohne interne IDs oder YAML bearbeiten zu muessen. Auswahl, Bearbeitung und Detailansicht von Personen und Beziehungen muessen eindeutig erkennbar sein.
+Das System MUST eine direkte Interaktion anbieten, mit der die Benutzerin eine Person auswaehlt und eine zweite Person ueber sichtbare Handles verbindet, ohne interne IDs oder YAML bearbeiten zu muessen. Ein seitlicher Handle MUSS bei einer Person mit Geschlecht `Mann` rechts und bei einer Person mit Geschlecht `Frau` links sichtbar sein. Eine Verbindung zwischen dem rechten Handle eines Mannes und dem linken Handle einer Frau MUSS als Ehe klassifiziert werden, unabhaengig davon, in welche Richtung die Verbindung gezogen wird. Bei Personen ohne Geschlechtsangabe DARF kein seitlicher Ehe-Handle angeboten werden.
+
+Eine Verbindung vom unteren Handle der ersten verbundenen Person zum oberen Handle der zweiten verbundenen Person MUSS als gerichtete Eltern-Kind-Beziehung klassifiziert werden. Die erste Person MUSS dabei als Elternteil und die zweite Person als Kind gespeichert werden. Fuer diese Klassifikation MUSS ausschliesslich die Art der verbundenen Handles gelten; die aktuelle Hoehe oder Position der Nodes DARF keine Rolle spielen. Das automatische Layout darf sich nach dem Speichern an die neue Beziehung anpassen.
+
+Jede neue Verbindung MUSS vor der Uebernahme in einem Beziehunginspektor ausdruecklich bestaetigt werden. Der durch die Handles bestimmte Beziehungstyp MUSS dort bereits feststehen. Kommentar und Quelle MUESSEN optional bleiben. Auswahl, Bearbeitung und Detailansicht von Personen und Beziehungen muessen eindeutig erkennbar sein.
 
 #### Scenario: Beziehung per direkter Verbindung erstellen
 - **GIVEN** mindestens zwei Personen sind sichtbar
-- **WHEN** die Benutzerin eine Verbindung von einer Person zum Ziel zieht, den Beziehungstyp waehlt und bestaetigt
+- **WHEN** die Benutzerin sie ueber passende seitliche oder vertikale Handles verbindet, den dadurch bestimmten Beziehungstyp prueft und die Beziehung bestaetigt
 - **THEN** wird die entsprechende Ehe- oder Eltern-Kind-Beziehung angelegt und die neue Kante ist ausgewaehlt
 
+#### Scenario: Ehe ueber seitliche Handles erstellen
+- **GIVEN** eine Frau und ein Mann sind sichtbar und besitzen ihre seitlichen Handles
+- **WHEN** die Benutzerin den linken Handle der Frau mit dem rechten Handle des Mannes verbindet, den vorgeschlagenen Beziehungstyp Ehe bestaetigt und speichert
+- **THEN** wird genau eine Ehebeziehung angelegt, unabhaengig von der Ziehrichtung, und die neue Kante ist ausgewaehlt
+
+#### Scenario: Eltern-Kind ueber vertikale Handles erstellen
+- **GIVEN** zwei Personen sind sichtbar und koennen beliebig auf der Arbeitsflaeche positioniert sein
+- **WHEN** die Benutzerin den unteren Handle der ersten Person mit dem oberen Handle der zweiten Person verbindet und die Beziehung speichert
+- **THEN** wird die erste Person als Elternteil und die zweite Person als Kind gespeichert, unabhaengig davon, welche Person auf der Arbeitsflaeche hoeher angezeigt wird
+
+#### Scenario: Beziehungstyp wird durch die Handles vorgegeben
+- **GIVEN** die Benutzerin hat eine neue Verbindung ueber seitliche oder vertikale Handles begonnen
+- **WHEN** der Beziehunginspektor angezeigt wird
+- **THEN** zeigt er den durch die Handles bestimmten Typ Ehe beziehungsweise Eltern-Kind an, ohne dass die Benutzerin den Typ manuell auswaehlen muss
+
+#### Scenario: Neue Beziehung ohne Kommentar und Quelle speichern
+- **GIVEN** eine gueltige handle-basierte Verbindung wurde begonnen und der Beziehungstyp ist bestimmt
+- **WHEN** die Benutzerin ohne Kommentar und ohne Quelle bestaetigt und speichert
+- **THEN** wird die Beziehung gueltig ohne Kommentar und Quelle gespeichert
+
 #### Scenario: Abgebrochene Verbindung veraendert keine Daten
-- **GIVEN** die Benutzerin hat eine neue Verbindung begonnen
-- **WHEN** sie die Verbindung abbricht oder kein gueltiges Ziel bestaetigt
+- **GIVEN** die Benutzerin hat eine neue handle-basierte Verbindung begonnen
+- **WHEN** sie den Beziehunginspektor verwirft oder die Verbindung kein gueltiges Ziel erreicht
 - **THEN** wird keine Beziehung angelegt und der bisherige Stammbaum bleibt unveraendert
+
+#### Scenario: Ungueltige oder doppelte handle-basierte Verbindung wird abgelehnt
+- **GIVEN** die Benutzerin versucht eine Selbstbeziehung, eine unzulaessige Kombination seitlicher Handles, eine Ehe mit nicht komplementaeren Geschlechtern oder eine bereits bestehende Paarung anzulegen
+- **WHEN** sie die Verbindung bestaetigt
+- **THEN** wird die Beziehung nicht gespeichert, der bisherige Stammbaum bleibt unveraendert und ein verstaendlicher Fehler wird angezeigt
 
 #### Scenario: Ausgewaehltes Objekt bearbeiten
 - **GIVEN** eine Person oder Beziehung ist ausgewaehlt
@@ -155,7 +184,7 @@ Das System MUST eine direkte Interaktion anbieten, mit der die Benutzerin eine P
 
 ### Requirement: Beziehungstypen sind auf der Arbeitsflaeche unterscheidbar
 
-Das System MUST Ehe- und Eltern-Kind-Beziehungen auf der Arbeitsflaeche durch eine gemeinsame weiche `simplebezier`-Linienform sowie unterschiedliche Farben und sichtbare Typbezeichnungen unterscheidbar darstellen. Eine Eltern-Kind-Beziehung MUST weiterhin eindeutig in Richtung des Kindes zeigen; eine Ehe DARF keinen Richtungspfeil zum Ehepartner anzeigen. Der Beziehungsstatus `inferred` MUSS unabhaengig vom Beziehungstyp zusaetzlich erkennbar bleiben.
+Das System MUST Ehe- und Eltern-Kind-Beziehungen auf der Arbeitsflaeche durch eine gemeinsame weiche `simplebezier`-Linienform sowie unterschiedliche Farben und sichtbare Typbezeichnungen unterscheidbar darstellen. Eine gespeicherte Eltern-Kind-Beziehung MUST am unteren Handle der Elternperson starten und am oberen Handle der Kindperson enden. Eine Eltern-Kind-Beziehung MUST weiterhin eindeutig in Richtung des Kindes zeigen; eine Ehe MUSS ihre seitlichen Ehe-Handles verwenden und DARF keinen Richtungspfeil zum Ehepartner anzeigen. Der Beziehungsstatus `inferred` MUSS unabhaengig vom Beziehungstyp zusaetzlich erkennbar bleiben.
 
 #### Scenario: Ehe und Elternschaft haben unterschiedliche Kanten
 - **GIVEN** eine Arbeitsflaeche enthaelt eine Ehe und eine Eltern-Kind-Beziehung
@@ -165,12 +194,18 @@ Das System MUST Ehe- und Eltern-Kind-Beziehungen auf der Arbeitsflaeche durch ei
 #### Scenario: Elternschaft zeigt zum Kind
 - **GIVEN** eine gerichtete Eltern-Kind-Beziehung von A nach C ist vorhanden
 - **WHEN** ihre Kante angezeigt wird
-- **THEN** besitzt sie eine sichtbare Richtungsspitze auf der Seite von C
+- **THEN** startet sie am unteren Handle von A, endet am oberen Handle von C und besitzt eine sichtbare Richtungsspitze auf der Seite von C
 
 #### Scenario: Ehe hat keine kuenstliche Richtung
 - **GIVEN** eine Ehe zwischen A und B ist vorhanden
 - **WHEN** ihre Kante angezeigt wird
-- **THEN** besitzt sie keine Richtungsspitze, die einen Ehepartner als Kind oder Ziel auszeichnet
+- **THEN** verbindet sie die seitlichen Ehe-Handles und besitzt keine Richtungsspitze, die einen Ehepartner als Kind oder Ziel auszeichnet
+
+#### Scenario: Gespeicherte Beziehungen verwenden ihre semantischen Handles
+
+- **GIVEN** ein Mann mit seitlichem Ehe-Handle und unterem Eltern-Handle ist mit anderen Personen verbunden
+- **WHEN** die gespeicherten Beziehungen angezeigt werden
+- **THEN** beginnt eine Eltern-Kind-Kante am unteren Handle und eine Ehe-Kante am seitlichen Ehe-Handle, ohne dass die Kantenart vom zufaelligen Handle-Reihenfolge im Node abhaengt
 
 ### Requirement: Personen koennen temporaer fuer die Beziehungsarbeit verschoben werden
 
@@ -246,3 +281,95 @@ Das System MUST fehlerhafte Eingaben vor dem Speichern sichtbar markieren und da
 - **GIVEN** der aktuelle Stammbaum wurde seit dem letzten Import oder Export geaendert
 - **WHEN** die Benutzerin eine andere Datei importieren oder den aktuellen Stammbaum verwerfen moechte
 - **THEN** muss sie den Verlust der ungespeicherten Aenderungen ausdruecklich bestaetigen oder kann den Vorgang abbrechen
+
+### Requirement: Das automatische Layout ordnet Familiengruppen deterministisch nach Layern an
+
+Das System MUST die sichtbaren Personen eines Stammbaums anhand der bekannten Eltern-Kind-Beziehungen und Ehegruppen deterministisch auf Generationen-Layer verteilen. Die aelteste Person mit bekanntem Geburtsdatum MUSS als einzige globale Root auf Layer `0` dienen; bei gleichen oder nicht sicher vergleichbaren Geburtsdaten entscheidet die Reihenfolge der Personen im YAML. Eine bekannte Elternperson der Root MUSS auf dem vorherigen Layer liegen, ein Kind auf dem naechsten Layer. Die Root- und Layer-Informationen DUERFEN nicht als zusaetzliche Fachdaten im YAML gespeichert werden.
+
+Alle Personen desselben Layers MUESSEN dieselbe horizontale Linie teilen. Eine Ehegruppe MUSS auf einem gemeinsamen Layer als zusammenhaengender horizontaler Block erscheinen. Innerhalb einer Ehegruppe MUSS ein Mann links von einer Frau stehen; eine durch Mehrfachheirat verbundene Gruppe MUSS als ein Block behandelt werden. Fuer eine direkte Eltern-Kind-Beziehung MUSS der Elternblock genau eine Ebene oberhalb des Kindes liegen, sofern die Beziehung nicht Teil eines DAGs mit unterschiedlich langen Elternpfaden ist; in diesem Fall MUSS jeder Elternblock lediglich oberhalb des Kindes liegen. Geschwisterbloecke MUESSEN auf derselben Ebene liegen. Ehepartner MUESSEN auf derselben Ebene liegen, sofern keine widerspruechliche Eltern-Kind-Bedingung dies unmoeglich macht.
+
+Die horizontale Anordnung MUSS fuer jede Familiengruppe die tatsaechlich belegten Ebenenkonturen ihrer Kinder beruecksichtigen. Ein rechter Teilbaum DARF nur so weit verschoben werden, bis er auf einer tatsaechlich gemeinsam belegten Ebene mit einem bestehenden Teilbaum kollisionsfrei liegt; tiefe Ebenen DUERFEN keine zusaetzlichen Abstaende auf nicht belegten Elternzeilen erzwingen. Eltern MUESSEN oberhalb ihrer Kinder angeordnet werden.
+
+Wenn ein Knoten in einem gerichteten azyklischen Beziehungsgraphen ueber mehrere Eltern-Kind-Wege erreichbar ist, MUSS seine Ebene so gewaehlt werden, dass er oberhalb aller Eltern liegt; bei mehreren moeglichen Ebenen wird die fruehestmoegliche gueltige Ebene verwendet. Die Layerberechnung MUSS von unten nach oben deterministische Teilbaumhoehen beruecksichtigen. Unverbundene Familiengruppen MUESSEN weiterhin deterministisch und ohne erfundene Geburtsdaten platziert werden.
+
+Bei einer Personenerstellung MUSS der aktuelle React-Flow-Viewport unveraendert bleiben. Bereits sichtbare Nodes MUESSEN ihre gerenderte Position behalten, und der neue Node MUSS im Mittelpunkt des aktuellen Sichtbereichs erscheinen. Das System DARF den Kamerablick bei Personen- oder Beziehungsaenderungen nicht automatisch an den vollstaendigen Graphen anpassen; ein vollstaendiges `fitView` bleibt einem expliziten Dateiimport vorbehalten.
+
+Nach dem Speichern einer Beziehung MUSS das automatische Layout weiterhin neu berechnet werden. Die neue Geometrie MUSS dabei am bisherigen Mittelpunkt der beiden verbundenen Personen verankert werden, damit die Verbindung im unveraenderten Sichtbereich weiter bearbeitbar bleibt.
+
+#### Scenario: Aelteste bekannte Person bestimmt die Root
+
+- **GIVEN** mehrere Personen mit bekannten und unbekannten Geburtsdaten sind im Stammbaum vorhanden
+- **WHEN** das automatische Layout berechnet wird
+- **THEN** liegt die Person mit dem fruehesten bekannten Geburtsdatum auf Layer `0`, bekannte Eltern dieser Person liegen auf Layer `-1` und ihre Kinder auf positiven Layern
+
+#### Scenario: Gleichstand entscheidet sich nach YAML-Reihenfolge
+
+- **GIVEN** zwei oder mehrere Personen haben dasselbe oder nicht sicher unterscheidbare aelteste Geburtsdatum
+- **WHEN** das automatische Layout die Root bestimmt
+- **THEN** wird die zuerst im YAML aufgefuehrte Person als Root verwendet
+
+#### Scenario: Root und Layer werden nicht persistiert
+
+- **GIVEN** ein Stammbaum wurde mit automatisch berechneten Layern dargestellt
+- **WHEN** der Stammbaum exportiert wird
+- **THEN** enthaelt das YAML keine Root- oder Layer-Felder, sondern weiterhin nur die bestehenden Personen- und Beziehungsdaten
+
+#### Scenario: Alle Personen eines Layers liegen auf einer Linie
+
+- **GIVEN** mehrere Familiengruppen gehoeren zur selben Generation
+- **WHEN** das Layout berechnet wird
+- **THEN** haben alle Nodes dieser Generation dieselbe vertikale Position
+
+#### Scenario: Ehepartner und Mehrfachheirat bilden einen geordneten Block
+
+- **GIVEN** ein Mann und eine Frau sind verheiratet und eine Person der Ehe hat eine weitere Ehe
+- **WHEN** das Layout berechnet wird
+- **THEN** bleiben alle durch die Ehen verbundenen Personen als ein zusammenhaengender Block auf demselben Layer, wobei Maenner links von Frauen stehen
+
+#### Scenario: Eltern stehen oberhalb ihrer Kinder
+
+- **GIVEN** eine Person oder Ehegruppe hat Eltern und eigene Kinder im Diagramm
+- **WHEN** das Layout berechnet wird
+- **THEN** liegen die Eltern auf dem vorherigen Layer, die Person oder Ehegruppe auf ihrem Layer und die Kinder auf nachfolgenden Layern
+
+#### Scenario: Direkte Eltern liegen genau eine Ebene oberhalb
+
+- **GIVEN** eine Familie ohne zusammenfuehrende alternative Elternpfade hat zwei Eltern und ein Kind
+- **WHEN** das automatische Layout die Layer berechnet
+- **THEN** liegen beide Elternbloecke genau eine Ebene oberhalb des Kindes
+
+#### Scenario: Geschwister teilen eine Ebene
+
+- **GIVEN** ein Elternblock hat mehrere Kinder ohne unterschiedliche Elternpfade
+- **WHEN** das automatische Layout die Layer berechnet
+- **THEN** liegen alle Geschwister auf derselben Ebene
+
+#### Scenario: Direkte Eltern bleiben trotz tiefer Ehepartner-Ahnenlinie oberhalb
+
+- **GIVEN** eine Ehegruppe besitzt direkte Eltern auf einer Ebene und ein Ehepartner zusaetzlich eine deutlich tiefere Ahnenlinie
+- **WHEN** das Layout berechnet wird
+- **THEN** liegt die Ehegruppe unter allen ihren Eltern, und kein Elternknoten wird durch die Layerberechnung unter das Kind verschoben
+
+#### Scenario: Ueberlappende Ebenenkonturen verdraengen Geschwistergruppen horizontal
+
+- **GIVEN** A und B sind verheiratet und haben die Kinder C, D, E und F, waehrend A die Geschwister G und H hat
+- **WHEN** das Layout berechnet wird
+- **THEN** werden C, D, E und F als zusammenhaengender Kinderbereich unter A und B angeordnet und die Teilbaeume werden nur auf tatsaechlich gemeinsam belegten Ebenen so weit verschoben, dass keine Nodes kollidieren
+
+#### Scenario: Neue Person erscheint im aktuellen Sichtbereich
+
+- **GIVEN** der Benutzer hat den Stammbaum verschoben oder gezoomt und mindestens eine Person ist sichtbar
+- **WHEN** eine neue Person gespeichert wird
+- **THEN** bleibt der Viewport unveraendert, bestehende sichtbare Nodes behalten ihre Position und die neue Person erscheint in der Mitte des Sichtbereichs
+
+#### Scenario: Beziehungsspeicherung haelt die Verbindung bearbeitbar
+
+- **GIVEN** zwei sichtbare Personen werden ueber ihre Handles verbunden
+- **WHEN** die neue Beziehung gespeichert wird
+- **THEN** bleibt der Viewport unveraendert, das automatische Layout wird angewendet und die verbundenen Personen bleiben im aktuellen Sichtbereich an ihrem bisherigen Mittelpunkt verankert
+
+#### Scenario: Bottom-up-Layer halten alle Eltern oberhalb des Kindes
+
+- **GIVEN** ein gerichteter azyklischer Stammbaum enthaelt mehrere Wege von der Root zu einem Nachfahren
+- **WHEN** das automatische Layout die Layer berechnet
+- **THEN** erhaelt der Nachfahre die fruehestmoegliche Ebene unterhalb aller Eltern, der laengere Elternpfad liegt genau eine Ebene darueber und ein kuerzerer Alternativpfad darf weiter oben liegen

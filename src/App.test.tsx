@@ -25,4 +25,30 @@ describe('application workbench', () => {
     expect(await screen.findByText('Ada Lovelace')).toBeInTheDocument()
     expect(screen.getByText('1 Person')).toBeVisible()
   })
+
+  it('shows gender-specific marriage handles only for people with a gender', async () => {
+    render(<App />)
+
+    const addPerson = async (firstName: string, gender?: 'woman' | 'man') => {
+      fireEvent.click(screen.getByRole('button', { name: 'Person anlegen' }))
+      fireEvent.change(screen.getByLabelText('Vorname'), { target: { value: firstName } })
+      fireEvent.change(screen.getByLabelText('Nachname'), { target: { value: 'Test' } })
+      if (gender) {
+        fireEvent.change(screen.getByLabelText('Geschlecht'), { target: { value: gender } })
+      }
+      fireEvent.click(screen.getByRole('button', { name: 'Person speichern' }))
+      await screen.findByText(`${firstName} Test`)
+    }
+
+    await addPerson('Mann', 'man')
+    await addPerson('Frau', 'woman')
+    await addPerson('Unbekannt')
+
+    const nodeFor = (label: string) => screen.getByText(`${label} Test`).closest('.person-node')
+
+    expect(nodeFor('Mann')?.querySelector('.react-flow__handle-right')).toBeInTheDocument()
+    expect(nodeFor('Frau')?.querySelector('.react-flow__handle-left')).toBeInTheDocument()
+    expect(nodeFor('Unbekannt')?.querySelector('.react-flow__handle-left')).not.toBeInTheDocument()
+    expect(nodeFor('Unbekannt')?.querySelector('.react-flow__handle-right')).not.toBeInTheDocument()
+  })
 })

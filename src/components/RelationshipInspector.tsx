@@ -19,6 +19,7 @@ export interface RelationshipFormDraft {
 
 interface RelationshipInspectorProps {
   relationship: Relationship | null
+  relationshipType?: RelationshipType
   sourcePerson: Person | null
   targetPerson: Person | null
   onSave: (draft: RelationshipFormDraft) => DomainError | null
@@ -28,8 +29,9 @@ interface RelationshipInspectorProps {
 
 const valuesFromRelationship = (
   relationship: Relationship | null,
+  relationshipType?: RelationshipType,
 ): RelationshipFormDraft => ({
-  relationshipType: relationship?.type ?? 'marriage',
+  relationshipType: relationship?.type ?? relationshipType ?? 'marriage',
   status: relationship?.status ?? 'explicit',
   startDate: relationship?.startDate?.toString() ?? '',
   sourceUrl: relationship?.sourceUrl ?? '',
@@ -38,19 +40,20 @@ const valuesFromRelationship = (
 
 function RelationshipInspector({
   relationship,
+  relationshipType,
   sourcePerson,
   targetPerson,
   onSave,
   onCancel,
   onRemove,
 }: RelationshipInspectorProps) {
-  const [values, setValues] = useState(() => valuesFromRelationship(relationship))
+  const [values, setValues] = useState(() => valuesFromRelationship(relationship, relationshipType))
   const [error, setError] = useState<DomainError | null>(null)
 
   useEffect(() => {
-    setValues(valuesFromRelationship(relationship))
+    setValues(valuesFromRelationship(relationship, relationshipType))
     setError(null)
-  }, [relationship])
+  }, [relationship, relationshipType])
 
   const updateValue = <Field extends keyof RelationshipFormDraft>(
     field: Field,
@@ -119,7 +122,7 @@ function RelationshipInspector({
             aria-invalid={Boolean(fieldError('relationshipType'))}
             aria-label="Beziehungstyp"
             value={values.relationshipType}
-            disabled={Boolean(relationship)}
+            disabled={Boolean(relationship || relationshipType)}
             onChange={(event) =>
               updateValue('relationshipType', event.target.value as RelationshipType)
             }

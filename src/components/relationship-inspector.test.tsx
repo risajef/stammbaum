@@ -120,4 +120,32 @@ describe('RelationshipInspector', () => {
 
     expect(screen.getByText('Das Datum muss im Format YYYY, YYYY-MM oder YYYY-MM-DD angegeben werden.')).toBeVisible()
   })
+
+  it('uses the type supplied by a new handle connection and keeps metadata optional', () => {
+    const onSave = vi.fn()
+
+    render(
+      <RelationshipInspector
+        relationship={null}
+        relationshipType="parent-child"
+        sourcePerson={sourcePerson}
+        targetPerson={targetPerson}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByLabelText('Beziehungstyp')).toHaveValue('parent-child')
+    expect(screen.getByLabelText('Beziehungstyp')).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Beziehung speichern' }))
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        relationshipType: 'parent-child',
+        sourceUrl: '',
+        comment: '',
+      }),
+    )
+  })
 })

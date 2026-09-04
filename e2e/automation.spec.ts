@@ -1,28 +1,52 @@
 import { expect, test, type Download, type Page } from '@playwright/test'
 
+const panToEmptySpot = async (page: Page) => {
+  const surface = page.locator('.flow-surface')
+  const surfaceBox = await surface.boundingBox()
+  if (!surfaceBox) throw new Error('Arbeitsfläche fehlt.')
+
+  const startX = surfaceBox.x + surfaceBox.width - 40
+  const startY = surfaceBox.y + surfaceBox.height - 40
+  await page.mouse.move(startX, startY)
+  await page.mouse.down()
+  await page.mouse.move(startX - 180, startY, { steps: 10 })
+  await page.mouse.up()
+}
+
 const addPerson = async (
   page: Page,
   firstName: string,
   lastName: string,
   gender: 'woman' | 'man',
 ) => {
+  if (await page.locator('.person-node').count() > 0) {
+    await panToEmptySpot(page)
+  }
+
   await page.getByRole('button', { name: 'Person anlegen' }).click()
   await page.getByLabel('Vorname').fill(firstName)
   await page.getByLabel('Nachname').fill(lastName)
   await page.getByLabel('Geschlecht').selectOption(gender)
   await page.getByRole('button', { name: 'Person speichern' }).click()
-  await expect(page.locator('.person-node').filter({ hasText: `${firstName} ${lastName}` })).toBeVisible()
+  const node = page.locator('.person-node').filter({ hasText: `${firstName} ${lastName}` })
+  await expect(node).toBeVisible()
 }
 
-const connectPeople = async (page: Page, sourceName: string, targetName: string) => {
+const connectPeople = async (
+  page: Page,
+  sourceName: string,
+  targetName: string,
+  sourceHandleSelector = '.react-flow__handle-bottom',
+  targetHandleSelector = '.react-flow__handle-top',
+) => {
   const sourceHandle = page
     .locator('.person-node')
     .filter({ hasText: sourceName })
-    .locator('.react-flow__handle.source')
+    .locator(sourceHandleSelector)
   const targetHandle = page
     .locator('.person-node')
     .filter({ hasText: targetName })
-    .locator('.react-flow__handle.target')
+    .locator(targetHandleSelector)
 
   await expect.poll(async () => {
     const sourceBox = await sourceHandle.boundingBox()
@@ -65,12 +89,20 @@ test.describe('automatische Familienlogik', () => {
     await addPerson(page, 'Hans', 'Weber', 'man')
     await addPerson(page, 'Lina', 'Weber', 'woman')
 
+    const viewport = page.locator('.react-flow__viewport')
+    const beforeRelationship = await viewport.evaluate((element) => getComputedStyle(element).transform)
     await connectPeople(page, 'Anna Weber', 'Lina Weber')
-    await page.getByLabel('Beziehungstyp').selectOption('parent-child')
     await page.getByRole('button', { name: 'Beziehung speichern' }).click()
+    const afterRelationship = await viewport.evaluate((element) => getComputedStyle(element).transform)
+    expect(afterRelationship).toBe(beforeRelationship)
 
-    await connectPeople(page, 'Anna Weber', 'Hans Weber')
-    await page.getByLabel('Beziehungstyp').selectOption('marriage')
+    await connectPeople(
+      page,
+      'Anna Weber',
+      'Hans Weber',
+      '.react-flow__handle-left',
+      '.react-flow__handle-right',
+    )
     await page.getByRole('button', { name: 'Beziehung speichern' }).click()
 
     await expect(page.locator('.relationship-edge')).toHaveCount(3)
@@ -84,7 +116,7 @@ test.describe('automatische Familienlogik', () => {
     expect(Math.abs(annaBox.y - hansBox.y)).toBeLessThan(2)
     expect(linaBox.y).toBeGreaterThan(annaBox.y)
 
-    await page.locator('.relationship-edge--inferred').click()
+    await page.locator('.relationship-edge--inferred').dispatchEvent('click')
     await expect(page.getByText(/Automatisch abgeleitet/).first()).toBeVisible()
   })
 
@@ -143,6 +175,58 @@ test.describe('automatische Familienlogik', () => {
 
     await expect.poll(async () => viewport.evaluate((element) => getComputedStyle(element).transform))
       .not.toBe(before)
+  })
+
+  test('behält den aktuellen Viewport beim Erstellen einer Person', async ({ page }) => {
+    await page.goto('/')
+    await addPerson(page, 'Anna', 'Weber', 'woman')
+
+    const surface = page.locator('.flow-surface')
+    const viewport = page.locator('.react-flow__viewport')
+    const existingNode = page.locator('.person-node').filter({ hasText: 'Anna Weber' })
+    const surfaceBox = await surface.boundingBox()
+    if (!surfaceBox) throw new Error('Arbeitsfläche fehlt.')
+
+    await page.locator('.react-flow__controls-zoomout').click()
+    const panStartX = surfaceBox.x + 40
+    const panStartY = surfaceBox.y + surfaceBox.height - 40
+    await page.mouse.move(panStartX, panStartY)
+    await page.mouse.down()
+    await page.mouse.move(panStartX + 120, panStartY - 80, { steps: 10 })
+    await page.mouse.up()
+
+    const before = await viewport.evaluate((element) => getComputedStyle(element).transform)
+  const existingBefore = await existingNode.boundingBox()
+  if (!existingBefore) throw new Error('Bestehender Personenknoten fehlt.')
+
+    await page.getByRole('button', { name: 'Person anlegen' }).click()
+    await page.getByLabel('Vorname').fill('Lina')
+    await page.getByLabel('Nachname').fill('Weber')
+    await page.getByRole('button', { name: 'Person speichern' }).click()
+
+    const newNode = page.locator('.person-node').filter({ hasText: 'Lina Weber' })
+    await expect(newNode).toBeVisible()
+    const after = await viewport.evaluate((element) => getComputedStyle(element).transform)
+    expect(after).toBe(before)
+    const existingAfter = await existingNode.boundingBox()
+    if (!existingAfter) throw new Error('Bestehender Personenknoten fehlt.')
+    expect(Math.hypot(existingAfter.x - existingBefore.x, existingAfter.y - existingBefore.y))
+      .toBeLessThan(3)
+
+    const nodeBox = await newNode.boundingBox()
+    const finalSurfaceBox = await surface.boundingBox()
+    if (!nodeBox || !finalSurfaceBox) throw new Error('Neuer Node oder Arbeitsfläche fehlt.')
+
+    const nodeCenter = {
+      x: nodeBox.x + nodeBox.width / 2,
+      y: nodeBox.y + nodeBox.height / 2,
+    }
+    const surfaceCenter = {
+      x: finalSurfaceBox.x + finalSurfaceBox.width / 2,
+      y: finalSurfaceBox.y + finalSurfaceBox.height / 2,
+    }
+    expect(Math.abs(nodeCenter.x - surfaceCenter.x)).toBeLessThan(3)
+    expect(Math.abs(nodeCenter.y - surfaceCenter.y)).toBeLessThan(3)
   })
 
   test('erlaubt starkes Herauszoomen', async ({ page }) => {

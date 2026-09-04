@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
+  ConnectionMode,
   Controls,
   ReactFlow,
   useReactFlow,
@@ -24,6 +25,10 @@ import type {
   Relationship,
 } from './domain/types'
 import { projectFamilyTree, type GraphSelection } from './graph/graph-projection'
+import {
+  classifyRelationshipConnection,
+  type RelationshipConnectionDraft,
+} from './graph/relationship-connection'
 import PersonNode from './components/PersonNode'
 import PersonInspector from './components/PersonInspector'
 import RelationshipInspector, {
@@ -37,17 +42,18 @@ import '@xyflow/react/dist/style.css'
 const nodeTypes = { person: PersonNode }
 const proOptions = { hideAttribution: true }
 
-interface ConnectionDraft {
-  sourceId: string
-  targetId: string
-}
+type ConnectionDraft = RelationshipConnectionDraft
 
-function FitViewOnPersonCount({ personCount }: { personCount: number }) {
+function FitViewOnRequest({ request }: { request: number }) {
   const { fitView } = useReactFlow()
 
   useEffect(() => {
+    if (request === 0) {
+      return
+    }
+
     void fitView({ padding: 0.2, minZoom: 0.01, maxZoom: 1.4 })
-  }, [fitView, personCount])
+  }, [fitView, request])
 
   return null
 }
@@ -63,45 +69,32 @@ function CenterPersonOnSave({
   surfaceRef,
   onCentered,
 }: CenterPersonOnSaveProps) {
-  const { fitView, getNode, screenToFlowPosition } = useReactFlow()
+  const { getNode, screenToFlowPosition } = useReactFlow()
 
   useEffect(() => {
     if (!personId) {
       return
     }
 
-    let isActive = true
-    const centerPerson = async () => {
-      await fitView({ padding: 0.2, minZoom: 0.01, maxZoom: 1.4 })
-      if (!isActive) {
-        return
-      }
-
-      const surface = surfaceRef.current
-      const surfaceBounds = surface?.getBoundingClientRect()
-      if (!surfaceBounds) {
-        return
-      }
-
-      const flowCenter = screenToFlowPosition({
-        x: surfaceBounds.left + surfaceBounds.width / 2,
-        y: surfaceBounds.top + surfaceBounds.height / 2,
-      })
-      const node = getNode(personId)
-      const nodeWidth = node?.measured?.width ?? node?.width ?? 148
-      const nodeHeight = node?.measured?.height ?? node?.height ?? 88
-
-      onCentered(personId, {
-        x: Math.round(flowCenter.x - nodeWidth / 2),
-        y: Math.round(flowCenter.y - nodeHeight / 2),
-      })
+    const surface = surfaceRef.current
+    const surfaceBounds = surface?.getBoundingClientRect()
+    if (!surfaceBounds) {
+      return
     }
 
-    void centerPerson()
-    return () => {
-      isActive = false
-    }
-  }, [fitView, getNode, onCentered, personId, screenToFlowPosition, surfaceRef])
+    const flowCenter = screenToFlowPosition({
+      x: surfaceBounds.left + surfaceBounds.width / 2,
+      y: surfaceBounds.top + surfaceBounds.height / 2,
+    })
+    const node = getNode(personId)
+    const nodeWidth = node?.measured?.width ?? node?.width ?? 148
+    const nodeHeight = node?.measured?.height ?? node?.height ?? 88
+
+    onCentered(personId, {
+      x: Math.round(flowCenter.x - nodeWidth / 2),
+      y: Math.round(flowCenter.y - nodeHeight / 2),
+    })
+  }, [getNode, onCentered, personId, screenToFlowPosition, surfaceRef])
 
   return null
 }
@@ -119,6 +112,7 @@ function App() {
   const [temporaryPositions, setTemporaryPositions] = useState<Map<string, Position>>(
     () => new Map(),
   )
+  const [fitViewRequest, setFitViewRequest] = useState(0)
   const [personToCenter, setPersonToCenter] = useState<string | null>(null)
   const flowSurfaceRef = useRef<HTMLDivElement>(null)
 
@@ -162,13 +156,16 @@ function App() {
     })
   }
   const handleConnect = (connection: Connection) => {
-    if (!connection.source || !connection.target) {
+    const classifiedConnection = classifyRelationshipConnection(document, connection)
+    if (!classifiedConnection.ok) {
+      setWorkflowError(classifiedConnection.error.message)
       return
     }
 
     setIsCreatingPerson(false)
     setSelection(undefined)
-    setConnectionDraft({ sourceId: connection.source, targetId: connection.target })
+    setConnectionDraft(classifiedConnection.value)
+    setWorkflowError(null)
   }
 
   const handlePersonSave = (draft: PersonDraft): DomainError | null => {
@@ -185,9 +182,14 @@ function App() {
     const savedPersonId = selectedPerson && !isCreatingPerson
       ? selectedPerson.id
       : result.value.persons[result.value.persons.length - 1]?.id
+    const positionsToKeep = isNewPerson
+      ? new Map(
+          projection.nodes.map((node) => [node.id, { x: node.position.x, y: node.position.y }]),
+        )
+      : new Map<string, Position>()
 
     setDocument(nextDocument)
-    setTemporaryPositions(new Map())
+    setTemporaryPositions(positionsToKeep)
     setPersonToCenter(isNewPerson ? savedPersonId ?? null : null)
     setIsDirty(true)
     setSaveState('Ungespeichert')
@@ -227,8 +229,9 @@ function App() {
       }
     }
 
+    const relationshipType = connectionDraft?.relationshipType ?? draft.relationshipType
     const result: ReturnType<typeof createMarriage> = connectionDraft
-      ? draft.relationshipType === 'marriage'
+      ? relationshipType === 'marriage'
         ? createMarriage(document, sourceId, targetId, {
             startDate: draft.startDate.trim() || null,
             status: draft.status,
@@ -263,9 +266,37 @@ function App() {
       ? result.value.relationships[result.value.relationships.length - 1]?.id
       : selectedRelationship?.id
     const nextDocument = synchronizeInferredRelationships(result.value)
+    const generatedProjection = projectFamilyTree(nextDocument)
+    const currentPositions = new Map(
+      projection.nodes.map((node) => [node.id, node.position]),
+    )
+    const generatedPositions = new Map(
+      generatedProjection.nodes.map((node) => [node.id, node.position]),
+    )
+    const currentAnchorPositions = [sourceId, targetId]
+      .map((personId) => currentPositions.get(personId))
+      .filter((position): position is Position => position !== undefined)
+    const generatedAnchorPositions = [sourceId, targetId]
+      .map((personId) => generatedPositions.get(personId))
+      .filter((position): position is Position => position !== undefined)
+    const anchoredPositions = currentAnchorPositions.length === 2 && generatedAnchorPositions.length === 2
+      ? new Map(
+          generatedProjection.nodes.map((node) => [
+            node.id,
+            {
+              x: node.position.x +
+                (currentAnchorPositions[0].x + currentAnchorPositions[1].x -
+                  generatedAnchorPositions[0].x - generatedAnchorPositions[1].x) / 2,
+              y: node.position.y +
+                (currentAnchorPositions[0].y + currentAnchorPositions[1].y -
+                  generatedAnchorPositions[0].y - generatedAnchorPositions[1].y) / 2,
+            },
+          ]),
+        )
+      : new Map<string, Position>()
 
     setDocument(nextDocument)
-    setTemporaryPositions(new Map())
+    setTemporaryPositions(anchoredPositions)
     setIsDirty(true)
     setSaveState('Ungespeichert')
     setWorkflowError(null)
@@ -339,6 +370,7 @@ function App() {
 
       setDocument(synchronizeInferredRelationships(result.value))
       setTemporaryPositions(new Map())
+      setFitViewRequest((current) => current + 1)
       clearTransientState()
       setIsDirty(false)
       setFileName(openedFile.name)
@@ -442,6 +474,7 @@ function App() {
               nodes={projection.nodes}
               edges={projection.edges}
               nodeTypes={nodeTypes}
+              connectionMode={ConnectionMode.Loose}
               fitView
               fitViewOptions={projection.fitViewOptions}
               minZoom={0.01}
@@ -466,9 +499,12 @@ function App() {
                 setSelection(undefined)
               }}
               onConnect={handleConnect}
+              isValidConnection={(connection) =>
+                classifyRelationshipConnection(document, connection).ok
+              }
               proOptions={proOptions}
             >
-              <FitViewOnPersonCount personCount={document.persons.length} />
+              <FitViewOnRequest request={fitViewRequest} />
               <CenterPersonOnSave
                 personId={personToCenter}
                 surfaceRef={flowSurfaceRef}
@@ -503,6 +539,7 @@ function App() {
           ) : connectionDraft || selection?.type === 'relationship' ? (
             <RelationshipInspector
               relationship={inspectorRelationship}
+              relationshipType={connectionDraft?.relationshipType}
               sourcePerson={sourcePerson}
               targetPerson={targetPerson}
               onSave={handleRelationshipSave}

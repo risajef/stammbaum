@@ -450,9 +450,14 @@ button {
 }
 
 .person-handle {
+  z-index: 1;
   width: 16px;
   height: 16px;
   border: 2px solid #fffdf8;
+  background: var(--coral);
+}
+
+.person-handle--marriage {
   background: var(--coral);
 }
 

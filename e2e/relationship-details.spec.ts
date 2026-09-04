@@ -1,11 +1,28 @@
 import { expect, test, type Page } from '@playwright/test'
 
+const panToEmptySpot = async (page: Page) => {
+  const surface = page.locator('.flow-surface')
+  const surfaceBox = await surface.boundingBox()
+  if (!surfaceBox) throw new Error('Arbeitsfläche fehlt.')
+
+  const startX = surfaceBox.x + surfaceBox.width - 40
+  const startY = surfaceBox.y + surfaceBox.height - 40
+  await page.mouse.move(startX, startY)
+  await page.mouse.down()
+  await page.mouse.move(startX - 180, startY, { steps: 10 })
+  await page.mouse.up()
+}
+
 const addPerson = async (
   page: Page,
   firstName: string,
   lastName: string,
   gender: 'woman' | 'man' = 'woman',
 ) => {
+  if (await page.locator('.person-node').count() > 0) {
+    await panToEmptySpot(page)
+  }
+
   await page.getByRole('button', { name: 'Person anlegen' }).click()
   await page.getByLabel('Vorname').fill(firstName)
   await page.getByLabel('Nachname').fill(lastName)
@@ -18,15 +35,17 @@ const connectPeople = async (
   page: Page,
   sourceName: string,
   targetName: string,
+  sourceHandleSelector = '.react-flow__handle-bottom',
+  targetHandleSelector = '.react-flow__handle-top',
 ) => {
   const sourceHandle = page
     .locator('.person-node')
     .filter({ hasText: sourceName })
-    .locator('.react-flow__handle.source')
+    .locator(sourceHandleSelector)
   const targetHandle = page
     .locator('.person-node')
     .filter({ hasText: targetName })
-    .locator('.react-flow__handle.target')
+    .locator(targetHandleSelector)
 
   await expect.poll(async () => {
     const sourceBox = await sourceHandle.boundingBox()
@@ -59,8 +78,13 @@ const connectPeople = async (
 const createMarriage = async (page: Page) => {
   await addPerson(page, 'Anna', 'Weber', 'woman')
   await addPerson(page, 'Hans', 'Weber', 'man')
-  await connectPeople(page, 'Anna Weber', 'Hans Weber')
-  await page.getByLabel('Beziehungstyp').selectOption('marriage')
+  await connectPeople(
+    page,
+    'Anna Weber',
+    'Hans Weber',
+    '.react-flow__handle-left',
+    '.react-flow__handle-right',
+  )
   await page.getByRole('button', { name: 'Beziehung speichern' }).click()
   await expect(page.locator('.relationship-edge')).toHaveCount(1)
 }
@@ -98,11 +122,10 @@ test.describe('Beziehungsdetails', () => {
     await createMarriage(page)
     await addPerson(page, 'Lina', 'Weber')
     await connectPeople(page, 'Anna Weber', 'Lina Weber')
-    await page.getByLabel('Beziehungstyp').selectOption('parent-child')
     await page.getByRole('button', { name: 'Beziehung speichern' }).click()
     await expect(page.locator('.relationship-edge')).toHaveCount(3)
 
-    await page.locator('.react-flow__edge.relationship-edge').first().click()
+    await page.locator('.react-flow__edge.relationship-edge').first().dispatchEvent('click')
     await expect(page.getByRole('button', { name: 'Beziehung entfernen' })).toBeVisible()
     page.once('dialog', (dialog) => dialog.accept())
     await page.getByRole('button', { name: 'Beziehung entfernen' }).click()
