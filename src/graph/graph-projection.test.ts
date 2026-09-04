@@ -251,6 +251,64 @@ describe('family tree graph projection', () => {
     expect(y('sibling-a')).toBe(y('sibling-b'))
   })
 
+  it('orders fully dated siblings with the oldest on the left', () => {
+    const document: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        layoutPerson('parent', '1780'),
+        layoutPerson('youngest', '1905-08-01'),
+        layoutPerson('middle', '1903-04-02'),
+        layoutPerson('oldest', '1900-02-03'),
+      ],
+      relationships: [
+        parentChild('parent-youngest', 'parent', 'youngest'),
+        parentChild('parent-middle', 'parent', 'middle'),
+        parentChild('parent-oldest', 'parent', 'oldest'),
+      ],
+    }
+
+    const projection = projectFamilyTree(document)
+    const x = (id: string) => projection.nodes.find((node) => node.id === id)?.position.x ?? 0
+
+    expect(x('oldest')).toBeLessThan(x('middle'))
+    expect(x('middle')).toBeLessThan(x('youngest'))
+  })
+
+  it('orders half-siblings together and puts missing birth dates last', () => {
+    const document: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        layoutPerson('parent-a', '1780'),
+        layoutPerson('parent-b', '1781'),
+        layoutPerson('unknown', null),
+        layoutPerson('partial', '1902'),
+        layoutPerson('youngest', '1910-01-01'),
+        layoutPerson('half-sibling', '1905-01-01'),
+        layoutPerson('oldest', '1900-01-01'),
+      ],
+      relationships: [
+        parentChild('parent-a-unknown', 'parent-a', 'unknown'),
+        parentChild('parent-a-partial', 'parent-a', 'partial'),
+        parentChild('parent-a-youngest', 'parent-a', 'youngest'),
+        parentChild('parent-a-half-sibling', 'parent-a', 'half-sibling'),
+        parentChild('parent-a-oldest', 'parent-a', 'oldest'),
+        parentChild('parent-b-half-sibling', 'parent-b', 'half-sibling'),
+      ],
+    }
+
+    const projection = projectFamilyTree(document)
+    const x = (id: string) => projection.nodes.find((node) => node.id === id)?.position.x ?? 0
+    const y = (id: string) => projection.nodes.find((node) => node.id === id)?.position.y
+
+    expect(y('oldest')).toBe(y('half-sibling'))
+    expect(y('half-sibling')).toBe(y('youngest'))
+    expect(x('oldest')).toBeLessThan(x('half-sibling'))
+    expect(x('oldest')).toBeLessThan(x('partial'))
+    expect(x('partial')).toBeLessThan(x('half-sibling'))
+    expect(x('half-sibling')).toBeLessThan(x('youngest'))
+    expect(x('youngest')).toBeLessThan(x('unknown'))
+  })
+
   it('keeps spouses on the same layer when one spouse has a deeper ancestry', () => {
     const document: FamilyTreeDocument = {
       schemaVersion: 1,
@@ -470,7 +528,7 @@ describe('family tree graph projection', () => {
       persons: [
         layoutPerson('grandparent', '1700', 'man'),
         layoutPerson('sibling-g', '1740', 'man'),
-        layoutPerson('sibling-h', '1745', 'woman'),
+        layoutPerson('sibling-h', '1735', 'woman'),
         layoutPerson('parent-woman', '1740', 'woman'),
         layoutPerson('parent-man', '1738', 'man'),
         ...['c', 'd', 'e', 'f'].map((id, index) => layoutPerson(`child-${id}`, `${1780 + index}`)),

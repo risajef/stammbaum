@@ -202,6 +202,23 @@ const compareKnownBirthDates = (first: PartialDateParts, second: PartialDatePart
   return 0
 }
 
+const selectEarliestKnownBirthDate = (
+  persons: readonly Person[],
+): PartialDateParts | undefined => {
+  let earliestDate: PartialDateParts | undefined
+
+  for (const person of persons) {
+    const birthDate = parsePartialDate(person.birthYear)
+    if (!birthDate) continue
+
+    if (!earliestDate || compareKnownBirthDates(birthDate, earliestDate) === -1) {
+      earliestDate = birthDate
+    }
+  }
+
+  return earliestDate
+}
+
 const selectOldestPerson = (persons: readonly Person[]): Person | undefined => {
   const firstPerson = persons[0]
   if (!firstPerson) return undefined
@@ -349,6 +366,25 @@ const createGeneratedPositions = (document: FamilyTreeDocument): Map<string, Pos
   assignComponentLayers(document, graph)
 
   const componentById = new Map(components.map((component) => [component.id, component]))
+  const personById = new Map(document.persons.map((person) => [person.id, person]))
+  const childPersonsByParentComponent = new Map<string, Map<string, Person[]>>()
+  document.relationships.forEach((relationship) => {
+    if (relationship.type !== 'parent-child') return
+
+    const parentComponentId = graph.componentByPerson.get(relationship.fromId)
+    const childComponentId = graph.componentByPerson.get(relationship.toId)
+    const childPerson = personById.get(relationship.toId)
+    if (!parentComponentId || !childComponentId || !childPerson) return
+
+    const childrenByComponent =
+      childPersonsByParentComponent.get(parentComponentId) ?? new Map<string, Person[]>()
+    const childPersons: Person[] = childrenByComponent.get(childComponentId) ?? []
+    if (!childPersons.some((person) => person.id === childPerson.id)) {
+      childPersons.push(childPerson)
+    }
+    childrenByComponent.set(childComponentId, childPersons)
+    childPersonsByParentComponent.set(parentComponentId, childrenByComponent)
+  })
   const layoutParentByChild = new Map<string, string>()
   const layoutChildren = new Map<string, string[]>()
   components.forEach((component) => {
@@ -363,10 +399,24 @@ const createGeneratedPositions = (document: FamilyTreeDocument): Map<string, Pos
     children.push(component.id)
     layoutChildren.set(parentId, children)
   })
-  layoutChildren.forEach((childIds) => {
+  layoutChildren.forEach((childIds, parentId) => {
     childIds.sort(
-      (firstId, secondId) =>
-        (componentById.get(firstId)?.order ?? 0) - (componentById.get(secondId)?.order ?? 0),
+      (firstId, secondId) => {
+        const firstBirthDate = selectEarliestKnownBirthDate(
+          childPersonsByParentComponent.get(parentId)?.get(firstId) ?? [],
+        )
+        const secondBirthDate = selectEarliestKnownBirthDate(
+          childPersonsByParentComponent.get(parentId)?.get(secondId) ?? [],
+        )
+
+        if (firstBirthDate && !secondBirthDate) return -1
+        if (!firstBirthDate && secondBirthDate) return 1
+
+        return (firstBirthDate && secondBirthDate
+          ? compareKnownBirthDates(firstBirthDate, secondBirthDate)
+          : 0) ||
+          (componentById.get(firstId)?.order ?? 0) - (componentById.get(secondId)?.order ?? 0)
+      },
     )
   })
 
