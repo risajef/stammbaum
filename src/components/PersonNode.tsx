@@ -7,9 +7,10 @@ type PersonGraphNode = Node<PersonNodeData, 'person'>
 
 function PersonNode({ data, selected }: NodeProps<PersonGraphNode>) {
   const genderLabel = data.gender === 'woman' ? 'Frau' : data.gender === 'man' ? 'Mann' : 'Nicht angegeben'
+  const isSelected = selected || data.selected
 
   return (
-    <div className={`person-node nopan${selected ? ' person-node--selected' : ''}`}>
+    <div className={`person-node nopan${isSelected ? ' person-node--selected' : ''}`}>
       <Handle
         className="person-handle"
         type="target"

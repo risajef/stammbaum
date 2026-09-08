@@ -7,6 +7,7 @@ import type {
   Relationship,
 } from '../domain/types'
 import { parsePartialDate, type PartialDateParts } from '../domain/life-date'
+import { filterFamilyTreeDocument, type GraphViewOptions } from './graph-view'
 import { relationshipHandleIds } from './relationship-connection'
 
 export type PersonNodeData = Record<string, unknown> & {
@@ -14,6 +15,7 @@ export type PersonNodeData = Record<string, unknown> & {
   label: string
   years: string
   gender: Person['gender']
+  selected: boolean
 }
 
 export type RelationshipEdgeData = Record<string, unknown> & {
@@ -590,7 +592,7 @@ const formatYears = (person: Person) => {
   if (person.deathYear !== null) {
     return `- ${person.deathYear}`
   }
-  return 'Lebensdaten unbekannt'
+  return ''
 }
 
 const projectPerson = (
@@ -607,6 +609,7 @@ const projectPerson = (
     label: `${person.firstName} ${person.lastName}`,
     years: formatYears(person),
     gender: person.gender,
+    selected: selection?.type === 'person' && selection.id === person.id,
   },
 })
 
@@ -666,18 +669,20 @@ export const projectFamilyTree = (
   document: FamilyTreeDocument,
   selection?: GraphSelection,
   positionOverrides: ReadonlyMap<string, Position> = new Map(),
+  viewOptions: GraphViewOptions = {},
 ): GraphProjection => {
-  const positions = createGeneratedPositions(document)
+  const visibleDocument = filterFamilyTreeDocument(document, viewOptions)
+  const positions = createGeneratedPositions(visibleDocument)
 
   return {
-    nodes: document.persons.map((person) =>
+    nodes: visibleDocument.persons.map((person) =>
       projectPerson(
         person,
         positionOverrides.get(person.id) ?? positions.get(person.id) ?? { x: 120, y: 80 },
         selection,
       ),
     ),
-    edges: document.relationships.map((relationship) =>
+    edges: visibleDocument.relationships.map((relationship) =>
       projectRelationship(relationship, selection),
     ),
     fitViewOptions: { ...defaultFitViewOptions },

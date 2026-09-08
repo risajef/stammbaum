@@ -26,6 +26,11 @@ import type {
 } from './domain/types'
 import { projectFamilyTree, type GraphSelection } from './graph/graph-projection'
 import {
+  filterFamilyTreeDocument,
+  findPersonSearchMatches,
+  type GraphViewOptions,
+} from './graph/graph-view'
+import {
   classifyRelationshipConnection,
   type RelationshipConnectionDraft,
 } from './graph/relationship-connection'
@@ -99,6 +104,36 @@ function CenterPersonOnSave({
   return null
 }
 
+interface FocusPersonOnRequestProps {
+  personId: string | null
+  request: number
+}
+
+function FocusPersonOnRequest({ personId, request }: FocusPersonOnRequestProps) {
+  const { getNode, setCenter } = useReactFlow()
+
+  useEffect(() => {
+    if (!personId || request === 0) {
+      return
+    }
+
+    const node = getNode(personId)
+    if (!node) {
+      return
+    }
+
+    const nodeWidth = node.measured?.width ?? node.width ?? 148
+    const nodeHeight = node.measured?.height ?? node.height ?? 88
+    void setCenter(
+      node.position.x + nodeWidth / 2,
+      node.position.y + nodeHeight / 2,
+      { zoom: 1.05, duration: 180 },
+    )
+  }, [getNode, personId, request, setCenter])
+
+  return null
+}
+
 function App() {
   const [document, setDocument] = useState<FamilyTreeDocument>(createEmptyDocument)
   const [selection, setSelection] = useState<GraphSelection>(undefined)
@@ -114,11 +149,42 @@ function App() {
   )
   const [fitViewRequest, setFitViewRequest] = useState(0)
   const [personToCenter, setPersonToCenter] = useState<string | null>(null)
+  const [focusPersonId, setFocusPersonId] = useState<string | null>(null)
+  const [focusRequest, setFocusRequest] = useState(0)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [isLocalView, setIsLocalView] = useState(false)
+  const [localAnchorId, setLocalAnchorId] = useState<string | null>(null)
+  const [localDistance, setLocalDistance] = useState(1)
+  const [bloodOnly, setBloodOnly] = useState(false)
+  const [hideLeaves, setHideLeaves] = useState(false)
+  const searchCursorRef = useRef(-1)
   const flowSurfaceRef = useRef<HTMLDivElement>(null)
+  const viewAnchorId = isLocalView
+    ? localAnchorId
+    : bloodOnly && selection?.type === 'person'
+      ? selection.id
+      : null
 
+  const viewOptions = useMemo<GraphViewOptions>(
+    () => ({
+      anchorPersonId: viewAnchorId,
+      distance: isLocalView ? localDistance : null,
+      bloodOnly,
+      hideLeaves,
+    }),
+    [bloodOnly, hideLeaves, isLocalView, localDistance, viewAnchorId],
+  )
+  const visibleDocument = useMemo(
+    () => filterFamilyTreeDocument(document, viewOptions),
+    [document, viewOptions],
+  )
+  const searchMatches = useMemo(
+    () => findPersonSearchMatches(visibleDocument, searchQuery),
+    [searchQuery, visibleDocument],
+  )
   const projection = useMemo(
-    () => projectFamilyTree(document, selection, temporaryPositions),
-    [document, selection, temporaryPositions],
+    () => projectFamilyTree(document, selection, temporaryPositions, viewOptions),
+    [document, selection, temporaryPositions, viewOptions],
   )
   const selectedPerson =
     selection?.type === 'person'
@@ -140,6 +206,69 @@ function App() {
   const targetPerson = inspectorConnection
     ? document.persons.find((person) => person.id === inspectorConnection.targetId) ?? null
     : null
+
+  useEffect(() => {
+    const selectedObjectIsVisible = selection?.type === 'person'
+      ? visibleDocument.persons.some((person) => person.id === selection.id)
+      : selection?.type === 'relationship'
+        ? visibleDocument.relationships.some((relationship) => relationship.id === selection.id)
+        : true
+
+    if (!selectedObjectIsVisible) {
+      setSelection(undefined)
+      setConnectionDraft(null)
+    }
+  }, [selection, visibleDocument])
+
+  useEffect(() => {
+    searchCursorRef.current = -1
+  }, [searchQuery, visibleDocument])
+
+  useEffect(() => {
+    if (searchCursorRef.current >= searchMatches.length) {
+      searchCursorRef.current = -1
+    }
+  }, [searchMatches.length])
+
+  const handleSearchNavigation = (direction: -1 | 1) => {
+    if (searchMatches.length === 0) {
+      return
+    }
+
+    const currentCursor = searchCursorRef.current
+    const nextCursor = currentCursor < 0
+      ? direction === 1 ? 0 : searchMatches.length - 1
+      : (currentCursor + direction + searchMatches.length) % searchMatches.length
+    const match = searchMatches[nextCursor]
+    if (!match) {
+      return
+    }
+
+    searchCursorRef.current = nextCursor
+    setIsCreatingPerson(false)
+    setConnectionDraft(null)
+    setSelection({ type: 'person', id: match.id })
+    setFocusPersonId(match.id)
+    setFocusRequest((current) => current + 1)
+  }
+
+  const handleLocalViewChange = (enabled: boolean) => {
+    setIsLocalView(enabled)
+    setLocalAnchorId(enabled && selection?.type === 'person' ? selection.id : null)
+  }
+
+  const resetViewState = () => {
+    setFocusPersonId(null)
+    setFocusRequest(0)
+    setSearchQuery('')
+    searchCursorRef.current = -1
+    setIsLocalView(false)
+    setLocalAnchorId(null)
+    setLocalDistance(1)
+    setBloodOnly(false)
+    setHideLeaves(false)
+  }
+
   const handleNodesChange = (changes: NodeChange[]) => {
     if (!changes.some((change) => change.type === 'position' && change.position)) {
       return
@@ -332,6 +461,9 @@ function App() {
     setSelection(undefined)
   }
 
+  const visiblePersonCount = projection.nodes.length
+  const hasActiveViewFilters = isLocalView || bloodOnly || hideLeaves
+
   const clearTransientState = () => {
     setSelection(undefined)
     setIsCreatingPerson(false)
@@ -349,6 +481,7 @@ function App() {
     setDocument(createEmptyDocument())
     setTemporaryPositions(new Map())
     clearTransientState()
+    resetViewState()
     setIsDirty(false)
     setFileName('stammbaum.yaml')
     setSaveState('Nicht gespeichert')
@@ -372,6 +505,7 @@ function App() {
       setTemporaryPositions(new Map())
       setFitViewRequest((current) => current + 1)
       clearTransientState()
+      resetViewState()
       setIsDirty(false)
       setFileName(openedFile.name)
       setSaveState(`Geöffnet: ${openedFile.name}`)
@@ -446,7 +580,9 @@ function App() {
               <p className="canvas-caption">
                 {document.persons.length === 0
                   ? 'Leer'
-                  : `${document.persons.length} ${document.persons.length === 1 ? 'Person' : 'Personen'}`}
+                  : hasActiveViewFilters
+                    ? `${visiblePersonCount} von ${document.persons.length} sichtbar`
+                    : `${document.persons.length} ${document.persons.length === 1 ? 'Person' : 'Personen'}`}
               </p>
             </div>
             <div className="canvas-heading-actions">
@@ -469,6 +605,91 @@ function App() {
               </span>
             </div>
           </div>
+          <div className="view-toolbar" aria-label="Ansichtsfilter">
+            <div className="view-search-group">
+              <label className="view-field view-field--search">
+                <span>Suche</span>
+                <input
+                  aria-label="Personensuche"
+                  placeholder="Name suchen"
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => {
+                    setSearchQuery(event.target.value)
+                    searchCursorRef.current = -1
+                  }}
+                />
+              </label>
+              <div className="search-navigation">
+                <button
+                  aria-label="Vorheriger Treffer"
+                  className="search-navigation-button"
+                  disabled={searchMatches.length === 0}
+                  title="Vorheriger Treffer"
+                  type="button"
+                  onClick={() => handleSearchNavigation(-1)}
+                >
+                  ‹
+                </button>
+                <span aria-live="polite" className="search-result-count">
+                  {searchQuery.trim() ? `${searchMatches.length} Treffer` : 'Keine Suche'}
+                </span>
+                <button
+                  aria-label="Nächster Treffer"
+                  className="search-navigation-button"
+                  disabled={searchMatches.length === 0}
+                  title="Nächster Treffer"
+                  type="button"
+                  onClick={() => handleSearchNavigation(1)}
+                >
+                  ›
+                </button>
+              </div>
+            </div>
+            <div className="view-filters">
+              <label className="view-toggle">
+                <input
+                  aria-label="Lokale Ansicht"
+                  checked={isLocalView}
+                  disabled={selection?.type !== 'person' && !isLocalView}
+                  type="checkbox"
+                  onChange={(event) => handleLocalViewChange(event.target.checked)}
+                />
+                <span>Lokale Ansicht</span>
+              </label>
+              <label className="view-field view-field--distance">
+                <span>Distanz</span>
+                <select
+                  aria-label="Distanz"
+                  disabled={!isLocalView || !localAnchorId}
+                  value={localDistance}
+                  onChange={(event) => setLocalDistance(Number(event.target.value))}
+                >
+                  {[0, 1, 2, 3, 4, 5].map((distance) => (
+                    <option key={distance} value={distance}>{distance}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="view-toggle">
+                <input
+                  aria-label="Nur Blutsverwandte"
+                  checked={bloodOnly}
+                  type="checkbox"
+                  onChange={(event) => setBloodOnly(event.target.checked)}
+                />
+                <span>Nur Blutsverwandte</span>
+              </label>
+              <label className="view-toggle">
+                <input
+                  aria-label="Leafs ausblenden"
+                  checked={hideLeaves}
+                  type="checkbox"
+                  onChange={(event) => setHideLeaves(event.target.checked)}
+                />
+                <span>Leafs ausblenden</span>
+              </label>
+            </div>
+          </div>
           <div ref={flowSurfaceRef} className="flow-surface">
             <ReactFlow
               nodes={projection.nodes}
@@ -486,6 +707,10 @@ function App() {
               onNodeClick={(_event, node) => {
                 setIsCreatingPerson(false)
                 setConnectionDraft(null)
+                searchCursorRef.current = searchMatches.findIndex((person) => person.id === node.id)
+                if (isLocalView) {
+                  setLocalAnchorId(node.id)
+                }
                 setSelection({ type: 'person', id: node.id })
               }}
               onEdgeClick={(_event, edge) => {
@@ -510,19 +735,24 @@ function App() {
                 surfaceRef={flowSurfaceRef}
                 onCentered={handlePersonCentered}
               />
+              <FocusPersonOnRequest personId={focusPersonId} request={focusRequest} />
               <Background color="#d9d0c2" gap={24} size={1} />
               <Controls showInteractive={false} position="bottom-left" />
             </ReactFlow>
-            {document.persons.length === 0 && (
+            {visiblePersonCount === 0 && (
               <div className="empty-canvas" aria-live="polite">
                 <div className="empty-canvas-icon" aria-hidden="true">
                   <span />
                   <span />
                   <span />
                 </div>
-                  <p className="empty-canvas-title">Keine Personen</p>
+                  <p className="empty-canvas-title">
+                    {document.persons.length === 0 ? 'Keine Personen' : 'Keine Treffer in der Ansicht'}
+                  </p>
                 <p className="empty-canvas-copy">
-                  Erste Person anlegen.
+                  {document.persons.length === 0
+                    ? 'Erste Person anlegen.'
+                    : 'Die aktiven Filter zeigen keine Personen.'}
                 </p>
               </div>
             )}
