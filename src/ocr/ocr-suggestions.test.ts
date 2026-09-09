@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { detectOcrSuggestions } from './ocr-suggestions'
+import { detectOcrSuggestions, findOcrPersonMatches } from './ocr-suggestions'
 import {
   PRIMARY_OCR_MODEL_ID,
   SUPPLEMENTAL_OCR_MODEL_ID,
@@ -206,9 +206,9 @@ describe('OCR family suggestions', () => {
     }
 
     const suggestions = detectOcrSuggestions(datedParentDocument, [
-      page('12. Mai 1810\nLina Weber, Tochter des Jacob Weber.', 64),
-      page('Mai 1810\nMina Weber, Tochter des Jacob Weber.', 65),
-      page('1810\nNina Weber, Tochter des Jacob Weber.', 66),
+      page('12. Mai 1840\nLina Weber, Tochter des Jacob Weber.', 64),
+      page('Mai 1840\nMina Weber, Tochter des Jacob Weber.', 65),
+      page('1840\nNina Weber, Tochter des Jacob Weber.', 66),
     ])
     const fullDate = suggestions.find((suggestion) => suggestion.newPerson.firstName === 'Lina')
     const monthDate = suggestions.find((suggestion) => suggestion.newPerson.firstName === 'Mina')
@@ -230,6 +230,130 @@ describe('OCR family suggestions', () => {
     )
     expect(fullDate?.scoreReasons.join(' ')).toEqual(expect.stringContaining('Name'))
     expect(fullDate?.scoreReasons.join(' ')).toEqual(expect.stringContaining('Datum'))
+  })
+
+  it('gives a normal parent-child age gap full plausibility and explains it', () => {
+    const parentDocument: FamilyTreeDocument = {
+      ...document,
+      persons: [{
+        id: 'michael-1',
+        firstName: 'Michael',
+        lastName: 'Weber',
+        gender: 'man',
+        birthYear: '1810',
+        deathYear: null,
+        position: null,
+      }],
+    }
+
+    const suggestion = detectOcrSuggestions(parentDocument, [
+      page('1840\nLina Weber, Tochter des Michael Weber.', 73),
+    ])[0]
+
+    expect(suggestion?.scoreBreakdown.relationship).toBe(10)
+    expect(suggestion?.scoreReasons.join(' ')).toContain('Altersabstand: 30 Jahre')
+  })
+
+  it('suppresses an extreme parent-child age gap from the normal suggestions', () => {
+    const parentDocument: FamilyTreeDocument = {
+      ...document,
+      persons: [{
+        id: 'michael-old',
+        firstName: 'Michael',
+        lastName: 'Weber',
+        gender: 'man',
+        birthYear: '1684',
+        deathYear: null,
+        position: null,
+      }],
+    }
+
+    expect(
+      detectOcrSuggestions(parentDocument, [
+        page('1790\nLina Weber, Tochter des Michael Weber.', 74),
+      ]),
+    ).toEqual([])
+  })
+
+  it('applies the same age-gap rule when the OCR candidate is the parent', () => {
+    const childDocument: FamilyTreeDocument = {
+      ...document,
+      persons: [{
+        id: 'lina-1',
+        firstName: 'Lina',
+        lastName: 'Weber',
+        gender: 'woman',
+        birthYear: '1840',
+        deathYear: null,
+        position: null,
+      }],
+    }
+
+    const suggestion = detectOcrSuggestions(childDocument, [
+      page('Michael Weber, geboren 1810.\nLina Weber, Tochter des Michael Weber.', 75),
+    ]).find((candidate) => candidate.direction === 'candidate-parent')
+
+    expect(suggestion?.newPerson).toMatchObject({
+      firstName: 'Michael',
+      lastName: 'Weber',
+      birthYear: '1810',
+    })
+    expect(suggestion?.scoreBreakdown.relationship).toBe(10)
+    expect(suggestion?.scoreReasons.join(' ')).toContain('Altersabstand: 30 Jahre')
+  })
+
+  it('keeps the age check neutral when a birth year is missing', () => {
+    const parentDocument: FamilyTreeDocument = {
+      ...document,
+      persons: [{
+        id: 'michael-unknown',
+        firstName: 'Michael',
+        lastName: 'Weber',
+        gender: 'man',
+        birthYear: null,
+        deathYear: null,
+        position: null,
+      }],
+    }
+
+    const suggestion = detectOcrSuggestions(parentDocument, [
+      page('1840\nLina Weber, Tochter des Michael Weber.', 76),
+    ])[0]
+
+    expect(suggestion?.scoreBreakdown.relationship).toBe(10)
+    expect(suggestion?.scoreReasons.join(' ')).toContain('Altersabstand: unbekannt')
+  })
+
+  it('finds fuzzy OCR occurrences across all loaded pages and ranks matching dates first', () => {
+    const person = {
+      id: 'hans-1',
+      firstName: 'Hans',
+      lastName: 'Müller',
+      gender: 'man' as const,
+      birthYear: '1842',
+      deathYear: null,
+      position: null,
+    }
+    const matches = findOcrPersonMatches(person, [
+      page('1841\nHane Mueler, Ehemann von Anna Weber.', 77, { section: 'Namensregister' }),
+      page('1842\nHane Mueler, Ehemann von Anna Weber.', 78, { section: 'Pfarrer und Verwaltung' }),
+    ])
+
+    expect(matches).toHaveLength(2)
+    expect(matches[0]).toMatchObject({
+      personId: 'hans-1',
+      scoreBreakdown: {
+        date: 20,
+        relationship: expect.any(Number),
+        source: 10,
+      },
+      source: { pageNumber: 78 },
+      excerpt: expect.stringContaining('Hane Mueler'),
+      sourceUrl: 'http://127.0.0.1:8767/review?book_id=book-1&page_id=page-78',
+    })
+    expect(matches[0]?.score).toBeGreaterThan(matches[1]?.score ?? 0)
+    expect(matches[0]?.scoreReasons.join(' ')).toEqual(expect.stringContaining('Name'))
+    expect(matches[0]?.scoreReasons.join(' ')).toEqual(expect.stringContaining('Datum'))
   })
 
   it('suppresses a same-named parent when every available birth date contradicts the OCR date', () => {

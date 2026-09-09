@@ -47,6 +47,8 @@ import { parseFamilyTreeYaml, serializeFamilyTreeYaml } from './persistence/yaml
 import { readOcrFromBackend } from './ocr/ocr-backend-client'
 import {
   detectOcrSuggestions,
+  findOcrPersonMatches,
+  type OcrPersonMatch,
   type OcrSuggestion,
 } from './ocr/ocr-suggestions'
 import {
@@ -182,6 +184,8 @@ function App() {
   )
   const [ocrPath, setOcrPath] = useState('')
   const [ocrSuggestions, setOcrSuggestions] = useState<OcrSuggestion[]>([])
+  const [ocrPersonMatches, setOcrPersonMatches] = useState<OcrPersonMatch[]>([])
+  const [ocrPersonSearchPersonId, setOcrPersonSearchPersonId] = useState<string | null>(null)
   const [pendingOcrSuggestion, setPendingOcrSuggestion] = useState<OcrSuggestion | null>(null)
   const searchCursorRef = useRef(-1)
   const flowSurfaceRef = useRef<HTMLDivElement>(null)
@@ -216,6 +220,9 @@ function App() {
     selection?.type === 'person'
       ? document.persons.find((person) => person.id === selection.id) ?? null
       : null
+  const visibleOcrPersonMatches = selectedPerson?.id === ocrPersonSearchPersonId
+    ? ocrPersonMatches
+    : []
   const selectedRelationship =
     selection?.type === 'relationship'
       ? document.relationships.find((relationship) => relationship.id === selection.id) ?? null
@@ -262,6 +269,8 @@ function App() {
     }
 
     setPendingOcrSuggestion(null)
+    setOcrPersonMatches([])
+    setOcrPersonSearchPersonId(null)
     setIsCreatingPerson(false)
     setConnectionDraft(null)
     setSelection({ type: 'person', id: personId })
@@ -542,6 +551,8 @@ function App() {
   const resetOcrState = () => {
     setOcrImportState(createEmptyOcrImportState())
     setOcrSuggestions([])
+    setOcrPersonMatches([])
+    setOcrPersonSearchPersonId(null)
   }
 
   const handleOcrImport = async () => {
@@ -552,6 +563,8 @@ function App() {
       errors: [],
     }))
     setOcrSuggestions([])
+    setOcrPersonMatches([])
+    setOcrPersonSearchPersonId(null)
 
     try {
       const result = await readOcrFromBackend(ocrPath)
@@ -575,6 +588,15 @@ function App() {
         }],
       })
     }
+  }
+
+  const handleOcrPersonSearch = () => {
+    if (!selectedPerson) {
+      return
+    }
+
+    setOcrPersonSearchPersonId(selectedPerson.id)
+    setOcrPersonMatches(findOcrPersonMatches(selectedPerson, ocrImportState.pages))
   }
 
   const handleOcrSuggestionOpen = (suggestion: OcrSuggestion) => {
@@ -927,9 +949,12 @@ function App() {
           importState={ocrImportState}
           suggestions={ocrSuggestions}
           persons={document.persons}
+          selectedPerson={selectedPerson}
+          personMatches={visibleOcrPersonMatches}
           ocrPath={ocrPath}
           onPathChange={setOcrPath}
           onImport={handleOcrImport}
+          onSearchPerson={handleOcrPersonSearch}
           onOpen={handleOcrSuggestionOpen}
           onReferencePersonClick={handlePersonNavigation}
           onReject={handleOcrSuggestionReject}

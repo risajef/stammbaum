@@ -4,7 +4,7 @@ import type {
   OcrPage,
   OcrRun,
 } from '../ocr/ocr-file-adapter'
-import type { OcrSuggestion } from '../ocr/ocr-suggestions'
+import type { OcrPersonMatch, OcrSuggestion } from '../ocr/ocr-suggestions'
 import type { Person } from '../domain/types'
 import {
   relationshipOriginClassName,
@@ -27,9 +27,12 @@ interface OcrSuggestionsPanelProps {
   importState: OcrImportViewState
   suggestions: readonly OcrSuggestion[]
   persons?: readonly Person[]
+  selectedPerson?: Person | null
+  personMatches?: readonly OcrPersonMatch[]
   ocrPath: string
   onPathChange: (path: string) => void
   onImport: () => void
+  onSearchPerson?: () => void
   onOpen?: (suggestion: OcrSuggestion) => void
   onReferencePersonClick?: (personId: string) => void
   /** Kept for callers that render the panel without suggestion actions. */
@@ -55,9 +58,12 @@ function OcrSuggestionsPanel({
   importState,
   suggestions,
   persons = [],
+  selectedPerson = null,
+  personMatches = [],
   ocrPath,
   onPathChange,
   onImport,
+  onSearchPerson,
   onOpen,
   onReferencePersonClick,
   onReject,
@@ -75,6 +81,13 @@ function OcrSuggestionsPanel({
     const person = persons.find((candidate) => candidate.id === personId)
     return person ? `${person.firstName} ${person.lastName}` : 'Unbekannte Bezugsperson'
   }
+  const selectedPersonLabel = selectedPerson
+    ? `${selectedPerson.firstName} ${selectedPerson.lastName}`
+    : null
+  const personSearchButtonLabel = selectedPersonLabel
+    ? `OCR-Stellen für ${selectedPersonLabel} suchen`
+    : 'OCR-Stelle suchen'
+  const canSearchPerson = Boolean(selectedPerson && importState.pages.length > 0 && onSearchPerson)
   const relationshipLabel = (suggestion: OcrSuggestion) =>
     suggestion.relationshipType === 'marriage'
       ? 'Ehe'
@@ -138,6 +151,73 @@ function OcrSuggestionsPanel({
           ))}
         </div>
       )}
+
+      <section className="ocr-person-search" aria-label="OCR-Personensuche">
+        <div className="ocr-person-search-header">
+          <div>
+            <p className="section-label">Vorhandene Person</p>
+            <h3>OCR-Personensuche</h3>
+          </div>
+          <button
+            className="toolbar-button"
+            type="button"
+            disabled={!canSearchPerson}
+            onClick={() => onSearchPerson?.()}
+          >
+            {personSearchButtonLabel}
+          </button>
+        </div>
+        {selectedPerson && (
+          <p className="ocr-search-status">Ausgewählt: {selectedPersonLabel}</p>
+        )}
+        {!selectedPerson && (
+          <p className="ocr-search-status">Wähle eine Stammbaumperson, um OCR-Stellen zu suchen.</p>
+        )}
+        {selectedPerson && importState.pages.length === 0 && (
+          <p className="ocr-search-status">Keine OCR-Seiten geladen.</p>
+        )}
+        {selectedPerson && personMatches.length > 0 && (
+          <div
+            className="ocr-person-match-list"
+            aria-label={`OCR-Treffer für ${selectedPersonLabel}`}
+          >
+            {personMatches.map((match) => {
+              const matchedNameLabel = `${match.matchedName.firstName} ${match.matchedName.lastName}`
+              return (
+                <article
+                  aria-label={`OCR-Treffer: ${matchedNameLabel}`}
+                  className="ocr-person-match-card"
+                  key={match.id}
+                >
+                  <div className="ocr-person-match-header">
+                    <div>
+                      <p className="section-label">OCR-Stelle</p>
+                      <h4>{matchedNameLabel}</h4>
+                    </div>
+                    <strong>Bewertung {match.score}/100</strong>
+                  </div>
+                  <ul className="ocr-suggestion-score-reasons" aria-label="Bewertungsdetails">
+                    {match.scoreReasons.map((scoreReason) => (
+                      <li key={scoreReason}>{scoreReason}</li>
+                    ))}
+                  </ul>
+                  <p className="ocr-suggestion-reason">{match.reason}</p>
+                  <blockquote className="ocr-suggestion-excerpt">{match.excerpt}</blockquote>
+                  <a
+                    className="ocr-suggestion-source-link"
+                    href={match.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Quelle im Review-Tool öffnen"
+                  >
+                    {(match.source.bookLabel?.trim() || match.source.bookId)} · {modelLabel(match.source.modelId)} · Seite {match.source.pageNumber}
+                  </a>
+                </article>
+              )
+            })}
+          </div>
+        )}
+      </section>
 
       <div className="ocr-suggestion-list" aria-label="Offene OCR-Vorschläge">
         {suggestions.length === 0

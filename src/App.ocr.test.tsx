@@ -144,6 +144,35 @@ describe('OCR suggestion save workflow', () => {
     expect(mocks.save).not.toHaveBeenCalled()
   })
 
+  it('searches OCR occurrences for the selected person without changing the tree or suggestions', async () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Öffnen' }))
+    await waitFor(() => expect(screen.getByText('Geöffnet: base.yaml')).toBeVisible())
+    fireEvent.click(screen.getByRole('button', { name: 'OCR-Pfad einlesen' }))
+
+    const suggestionCard = await screen.findByRole('article', { name: /Lina Weber/ })
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Personensuche' }), {
+      target: { value: 'Anna' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Nächster Treffer' }))
+
+    const searchButton = await screen.findByRole('button', {
+      name: 'OCR-Stellen für Anna Weber suchen',
+    })
+    expect(searchButton).toBeEnabled()
+    fireEvent.click(searchButton)
+
+    const match = await screen.findByRole('article', { name: 'OCR-Treffer: Anna Weber' })
+    expect(match).toHaveTextContent('Anna Weber')
+    expect(match).toHaveTextContent('Lina Weber, Tochter des Anna Weber.')
+    expect(suggestionCard).toBeVisible()
+    expect(screen.getByText('1 Person')).toBeVisible()
+    expect(screen.getByText('Geöffnet: base.yaml')).toBeVisible()
+    expect(screen.queryByText('Ungespeichert')).not.toBeInTheDocument()
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+
   it('keeps the OCR card and editor open after an invalid OCR save', async () => {
     render(<App />)
 

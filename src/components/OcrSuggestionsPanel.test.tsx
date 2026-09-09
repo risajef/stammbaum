@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import OcrSuggestionsPanel from './OcrSuggestionsPanel'
 import type { Person } from '../domain/types'
-import type { OcrSuggestion } from '../ocr/ocr-suggestions'
+import type { OcrPersonMatch, OcrSuggestion } from '../ocr/ocr-suggestions'
 
 const knownPerson: Person = {
   id: 'parent-1',
@@ -55,6 +55,25 @@ const suggestion: OcrSuggestion = {
     path: 'run-1/text/page-7.txt',
   },
   sourceUrl: 'http://127.0.0.1:8767/review?book_id=book-1&page_id=page-7',
+}
+
+const personMatch: OcrPersonMatch = {
+  id: 'person-match-1',
+  personId: 'parent-1',
+  matchedName: { firstName: 'Hane', lastName: 'Mueler' },
+  reason: 'OCR-Stelle für Anna Weber.',
+  score: 82,
+  scoreBreakdown: {
+    name: 33,
+    date: 20,
+    gender: 10,
+    relationship: 8,
+    source: 10,
+  },
+  scoreReasons: ['Name: 33/35', 'Datum: 20/35'],
+  excerpt: 'Hane Mueler, Ehemann von Anna Weber.',
+  source: suggestion.source,
+  sourceUrl: suggestion.sourceUrl,
 }
 
 describe('OcrSuggestionsPanel', () => {
@@ -298,5 +317,97 @@ describe('OcrSuggestionsPanel', () => {
 
     fireEvent.click(within(card).getByRole('button', { name: 'Vorschlag bearbeiten' }))
     expect(onOpen).toHaveBeenCalledWith(suggestion)
+  })
+
+  it('offers an explicit search for the selected person and shows separate read-only matches', () => {
+    const onSearchPerson = vi.fn()
+
+    render(
+      <OcrSuggestionsPanel
+        importState={{
+          status: 'loaded',
+          runs: [],
+          pages: [{
+            id: 'run-1:7',
+            runId: 'run-1',
+            bookId: 'book-1',
+            pageId: 'page-7',
+            pageNumber: 7,
+            modelId: 'kraken-pp-ocrv6-medium',
+            section: 'Taufen 1840',
+            path: 'run-1/text/page-7.txt',
+            text: personMatch.excerpt,
+            sourceUrl: personMatch.sourceUrl,
+          }],
+          errors: [],
+        }}
+        suggestions={[suggestion]}
+        persons={[knownPerson]}
+        selectedPerson={knownPerson}
+        personMatches={[personMatch]}
+        ocrPath=""
+        onPathChange={vi.fn()}
+        onImport={vi.fn()}
+        onSearchPerson={onSearchPerson}
+        onReject={vi.fn()}
+      />,
+    )
+
+    const searchButton = screen.getByRole('button', {
+      name: 'OCR-Stellen für Anna Weber suchen',
+    })
+    expect(searchButton).toBeEnabled()
+    fireEvent.click(searchButton)
+    expect(onSearchPerson).toHaveBeenCalledOnce()
+
+    const result = screen.getByRole('article', { name: 'OCR-Treffer: Hane Mueler' })
+    expect(result).toHaveTextContent('Bewertung 82/100')
+    expect(result).toHaveTextContent('Hane Mueler, Ehemann von Anna Weber.')
+    expect(result).toHaveTextContent('Name: 33/35')
+    expect(within(result).getByRole('link', {
+      name: 'Kirchenbuch 1840 · PP-OCRv6 · Seite 7',
+    })).toBeVisible()
+    expect(screen.getByRole('article', { name: /Vorschlag: Lina Weber/ })).toBeVisible()
+  })
+
+  it('disables the person search without a selected person or loaded OCR pages', () => {
+    const { rerender } = render(
+      <OcrSuggestionsPanel
+        importState={{ status: 'idle', runs: [], pages: [], errors: [] }}
+        suggestions={[]}
+        persons={[]}
+        selectedPerson={null}
+        personMatches={[]}
+        ocrPath=""
+        onPathChange={vi.fn()}
+        onImport={vi.fn()}
+        onSearchPerson={vi.fn()}
+        onReject={vi.fn()}
+      />,
+    )
+
+    const searchButton = screen.getByRole('button', { name: 'OCR-Stelle suchen' })
+    expect(searchButton).toBeDisabled()
+    expect(screen.getByText('Wähle eine Stammbaumperson, um OCR-Stellen zu suchen.')).toBeVisible()
+
+    rerender(
+      <OcrSuggestionsPanel
+        importState={{ status: 'loaded', runs: [], pages: [], errors: [] }}
+        suggestions={[]}
+        persons={[knownPerson]}
+        selectedPerson={knownPerson}
+        personMatches={[]}
+        ocrPath=""
+        onPathChange={vi.fn()}
+        onImport={vi.fn()}
+        onSearchPerson={vi.fn()}
+        onReject={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', {
+      name: 'OCR-Stellen für Anna Weber suchen',
+    })).toBeDisabled()
+    expect(screen.getByText('Keine OCR-Seiten geladen.')).toBeVisible()
   })
 })

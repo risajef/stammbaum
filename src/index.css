@@ -1029,6 +1029,58 @@ button {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
+.ocr-person-search {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 10px;
+  border: 1px solid rgba(56, 91, 89, 0.18);
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.ocr-person-search-header,
+.ocr-person-match-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ocr-person-search h3,
+.ocr-person-match-card h4 {
+  margin: 0;
+  color: var(--teal-deep);
+  font-size: 0.86rem;
+}
+
+.ocr-search-status {
+  margin: 0;
+  color: var(--muted-ink);
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.ocr-person-match-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ocr-person-match-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-left: 3px solid var(--teal);
+  background: rgba(255, 253, 248, 0.72);
+}
+
+.ocr-person-match-header strong {
+  flex: 0 0 auto;
+  color: var(--teal-deep);
+  font-size: 0.68rem;
+}
+
 .ocr-empty-state {
   margin: 0;
   padding: 12px 8px;

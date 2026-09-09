@@ -2,6 +2,7 @@ import type {
   DateValue,
   FamilyTreeDocument,
   Gender,
+  Person,
   PersonDraft,
   RelationshipType,
 } from '../domain/types'
@@ -49,7 +50,21 @@ export interface OcrSuggestion {
   score: number
   scoreBreakdown: OcrSuggestionScoreBreakdown
   scoreReasons: string[]
+  ageReason?: string
   evidence: OcrSuggestionEvidence
+  excerpt: string
+  source: OcrSuggestionSource
+  sourceUrl: string
+}
+
+export interface OcrPersonMatch {
+  id: string
+  personId: string
+  matchedName: Pick<PersonDraft, 'firstName' | 'lastName'>
+  reason: string
+  score: number
+  scoreBreakdown: OcrSuggestionScoreBreakdown
+  scoreReasons: string[]
   excerpt: string
   source: OcrSuggestionSource
   sourceUrl: string
@@ -599,12 +614,83 @@ const stableSuggestionId = (
 
 const excerptFor = (match: string) => normalizeOcrText(match).slice(0, 280)
 
+const sourceForPage = (page: OcrPage): OcrSuggestionSource => ({
+  bookId: page.bookId,
+  bookLabel: page.bookLabel,
+  pageId: page.pageId,
+  runId: page.runId,
+  pageNumber: page.pageNumber,
+  modelId: page.modelId,
+  section: page.section,
+  path: page.path,
+})
+
+const sourceUrlForPage = (page: OcrPage) => page.sourceUrl || buildOcrSourceUrl({
+  bookId: page.bookId,
+  pageId: page.pageId,
+  runId: page.runId,
+  pageNumber: page.pageNumber,
+})
+
 const displayMarker = (marker: string) => {
   const normalized = marker.toLocaleLowerCase('de-DE')
   return normalized.charAt(0).toLocaleUpperCase('de-DE') + normalized.slice(1)
 }
 
 const MIN_SUGGESTION_SCORE = 50
+
+interface AgePlausibility {
+  score: number
+  reason: string
+}
+
+const birthYearOf = (date: DateValue | null) => parsePartialDate(date)?.year ?? null
+
+const parentChildAgePlausibilityFor = (
+  direction: OcrSuggestionDirection,
+  candidateBirthYear: DateValue | null,
+  existingBirthYear: DateValue | null,
+): AgePlausibility | null => {
+  const candidateYear = birthYearOf(candidateBirthYear)
+  const existingYear = birthYearOf(existingBirthYear)
+  if (candidateYear === null || existingYear === null) {
+    return {
+      score: 10,
+      reason: 'Altersabstand: unbekannt',
+    }
+  }
+
+  const ageGap = direction === 'candidate-parent'
+    ? existingYear - candidateYear
+    : candidateYear - existingYear
+  if (ageGap < 12 || ageGap > 70) {
+    return null
+  }
+
+  if (ageGap >= 20 && ageGap <= 45) {
+    return {
+      score: 10,
+      reason: `Altersabstand: ${ageGap} Jahre, plausibel`,
+    }
+  }
+
+  if ((ageGap >= 15 && ageGap <= 19) || (ageGap >= 46 && ageGap <= 60)) {
+    return {
+      score: 5,
+      reason: `Altersabstand: ${ageGap} Jahre, außergewöhnlich`,
+    }
+  }
+
+  return {
+    score: 2,
+    reason: `Altersabstand: ${ageGap} Jahre, sehr ungewöhnlich`,
+  }
+}
+
+interface ScoreBreakdownResult {
+  breakdown: OcrSuggestionScoreBreakdown
+  ageReason: string | null
+}
 
 const scoreBreakdownFor = (
   existingPerson: Pick<FamilyTreeDocument['persons'][number], 'firstName' | 'lastName' | 'birthYear'>,
@@ -614,31 +700,46 @@ const scoreBreakdownFor = (
   gender: Gender | null,
   birthYear: DateValue | null,
   referenceBirthYear: DateValue | null,
+  direction: OcrSuggestionDirection,
   modelId: string,
-): OcrSuggestionScoreBreakdown => ({
-  name: Math.round(Math.min(
-    35,
-    Math.max(
-      0,
-      ...namesFromText(knownText).map((name) => nameScoreFor(name, existingPerson) ?? 0),
-    ),
-  )),
-  date: referenceBirthYear === null
-    ? existingCandidate
-      ? dateScoreFor(birthYear, existingCandidate.birthYear)
-      : datePrecisionScoreFor(birthYear)
-    : dateScoreFor(referenceBirthYear, existingPerson.birthYear),
-  gender: gender ? 10 : 0,
-  relationship: relationshipType === 'parent-child' ? 10 : 8,
-  source: sourceScoreOf(modelId),
-})
+): ScoreBreakdownResult | null => {
+  const agePlausibility = relationshipType === 'parent-child'
+    ? parentChildAgePlausibilityFor(direction, birthYear, existingPerson.birthYear)
+    : { score: 8, reason: null }
+  if (!agePlausibility) return null
 
-const scoreReasonsFor = (breakdown: OcrSuggestionScoreBreakdown) => [
+  return {
+    breakdown: {
+      name: Math.round(Math.min(
+        35,
+        Math.max(
+          0,
+          ...namesFromText(knownText).map((name) => nameScoreFor(name, existingPerson) ?? 0),
+        ),
+      )),
+      date: referenceBirthYear === null
+        ? existingCandidate
+          ? dateScoreFor(birthYear, existingCandidate.birthYear)
+          : datePrecisionScoreFor(birthYear)
+        : dateScoreFor(referenceBirthYear, existingPerson.birthYear),
+      gender: gender ? 10 : 0,
+      relationship: agePlausibility.score,
+      source: sourceScoreOf(modelId),
+    },
+    ageReason: agePlausibility.reason,
+  }
+}
+
+const scoreReasonsFor = (
+  breakdown: OcrSuggestionScoreBreakdown,
+  ageReason: string | null = null,
+) => [
   `Name: ${breakdown.name}/35`,
   `Datum: ${breakdown.date}/35`,
   `Geschlecht: ${breakdown.gender}/10`,
   `Beziehung: ${breakdown.relationship}/10`,
   `Quelle: ${breakdown.source}/10`,
+  ...(ageReason ? [ageReason] : []),
 ]
 
 const createSuggestion = (
@@ -681,20 +782,13 @@ const createSuggestion = (
     gender,
     birthYear,
     referenceBirthYear,
+    direction,
     page.modelId,
   )
-  const score = Object.values(scoreBreakdown).reduce((total, value) => total + value, 0)
+  if (!scoreBreakdown) return null
+  const score = Object.values(scoreBreakdown.breakdown).reduce((total, value) => total + value, 0)
   if (score < MIN_SUGGESTION_SCORE) return null
-  const source = {
-    bookId: page.bookId,
-    bookLabel: page.bookLabel,
-    pageId: page.pageId,
-    runId: page.runId,
-    pageNumber: page.pageNumber,
-    modelId: page.modelId,
-    section: page.section,
-    path: page.path,
-  }
+  const source = sourceForPage(page)
 
   return {
     id: stableSuggestionId(existingPersonId, relationshipType, direction, {
@@ -715,17 +809,13 @@ const createSuggestion = (
     direction,
     reason,
     score,
-    scoreBreakdown,
-    scoreReasons: scoreReasonsFor(scoreBreakdown),
+    scoreBreakdown: scoreBreakdown.breakdown,
+    scoreReasons: scoreReasonsFor(scoreBreakdown.breakdown, scoreBreakdown.ageReason),
+    ageReason: scoreBreakdown.ageReason ?? undefined,
     evidence: { count: 1, sources: [source] },
     excerpt: excerptFor(match),
     source,
-    sourceUrl: page.sourceUrl || buildOcrSourceUrl({
-      bookId: page.bookId,
-      pageId: page.pageId,
-      runId: page.runId,
-      pageNumber: page.pageNumber,
-    }),
+    sourceUrl: sourceUrlForPage(page),
   }
 }
 
@@ -982,6 +1072,7 @@ export const detectOcrSuggestions = (
           const knownChildBirthYear = extractNamedReferenceDate(text, groups.candidate ?? '')
           const knownChild = findKnownPerson(document, groups.candidate ?? '', knownChildBirthYear)
           const parentCandidate = extractName(parentText)
+          const candidateParentBirthYear = extractNamedReferenceDate(text, parentText)
           if (knownChild && parentCandidate) {
             addCandidate(
               page,
@@ -996,7 +1087,7 @@ export const detectOcrSuggestions = (
                 parentCandidate,
                 `${knownChild.firstName} ${knownChild.lastName}`,
               ),
-              null,
+              candidateParentBirthYear,
               knownChildBirthYear,
             )
           }
@@ -1135,16 +1226,17 @@ export const detectOcrSuggestions = (
         sourceScoreOf(preferred.source.modelId) + Math.min(2, Math.max(0, evidenceCount - 1)),
       ),
     }
+    const ageReason = first.scoreBreakdown.relationship >= second.scoreBreakdown.relationship
+      ? first.ageReason ?? second.ageReason ?? null
+      : second.ageReason ?? first.ageReason ?? null
     const score = Object.values(scoreBreakdown).reduce((total, value) => total + value, 0)
 
     return {
       ...preferred,
       score,
       scoreBreakdown,
-      scoreReasons: [
-        ...scoreReasonsFor(scoreBreakdown),
-        `Belege: ${evidenceCount}`,
-      ],
+      scoreReasons: [...scoreReasonsFor(scoreBreakdown, ageReason), `Belege: ${evidenceCount}`],
+      ageReason: ageReason ?? undefined,
       evidence: {
         count: evidenceCount,
         sources: [...sourceMap.values()].sort(compareSources),
@@ -1167,4 +1259,117 @@ export const detectOcrSuggestions = (
       normalisedNameKey(first.newPerson).localeCompare(normalisedNameKey(second.newPerson), 'de') ||
       first.id.localeCompare(second.id),
   )
+}
+
+const stablePersonMatchId = (
+  personId: string,
+  page: OcrPage,
+  lineIndex: number,
+  matchedName: Pick<PersonDraft, 'firstName' | 'lastName'>,
+) => {
+  const value = `${personId}|${page.bookId}|${page.pageId}|${page.runId}|${lineIndex}|${normalisedNameKey(matchedName)}`
+  let hash = 2166136261
+  for (const character of value) {
+    hash ^= character.codePointAt(0) ?? 0
+    hash = Math.imul(hash, 16777619)
+  }
+  return `ocr-person-match-${(hash >>> 0).toString(16)}`
+}
+
+const relationshipContextFor = (text: string) => {
+  const normalized = comparableText(text)
+  if (/(?:sohn|tochter|kind)/u.test(normalized)) {
+    return {
+      relationship: 10,
+      gender: genderForChildMarker(text),
+      label: 'Eltern-Kind-Kontext',
+    }
+  }
+  if (/(?:ehefrau|ehemann|ehegatte|gattin|gatte|verheiratet|ehepartner)/u.test(normalized)) {
+    return {
+      relationship: 8,
+      gender: genderForSpouseMarker(text),
+      label: 'Ehe-Kontext',
+    }
+  }
+  return {
+    relationship: 0,
+    gender: null,
+    label: null,
+  }
+}
+
+const nearbyDateForLine = (lines: readonly string[], lineIndex: number) =>
+  extractDateFromText(lines[lineIndex] ?? '') ??
+  extractDateFromText(lines[lineIndex - 1] ?? '') ??
+  extractDateFromText(lines[lineIndex + 1] ?? '')
+
+export const findOcrPersonMatches = (
+  person: Person,
+  pages: readonly OcrPage[],
+): OcrPersonMatch[] => {
+  const rankedMatches: Array<{ match: OcrPersonMatch; lineIndex: number }> = []
+
+  for (const page of pages) {
+    const lines = normalizedOcrLines(page.text)
+    for (const [lineIndex, line] of lines.entries()) {
+      const bestName = namesFromText(line)
+        .map((matchedName) => ({
+          matchedName,
+          score: nameScoreFor(matchedName, person),
+        }))
+        .filter((candidate): candidate is {
+          matchedName: Pick<PersonDraft, 'firstName' | 'lastName'>
+          score: number
+        } => candidate.score !== null && candidate.score >= MIN_KNOWN_NAME_SCORE)
+        .sort((first, second) => second.score - first.score)[0]
+      if (!bestName) continue
+
+      const context = relationshipContextFor(line)
+      const gender = context.gender !== null && context.gender === person.gender ? 10 : 0
+      const scoreBreakdown: OcrSuggestionScoreBreakdown = {
+        name: Math.round(Math.min(35, bestName.score)),
+        date: dateScoreFor(nearbyDateForLine(lines, lineIndex), person.birthYear),
+        gender,
+        relationship: context.relationship,
+        source: sourceScoreOf(page.modelId),
+      }
+      const source = sourceForPage(page)
+      const matchedNameLabel = `${bestName.matchedName.firstName} ${bestName.matchedName.lastName}`
+      const personLabel = `${person.firstName} ${person.lastName}`
+      const reason = `OCR-Name „${matchedNameLabel}“ passt zu ${personLabel}.`
+      const ageReason = context.label ? `Kontext: ${context.label}` : null
+      const score = Object.values(scoreBreakdown).reduce((total, value) => total + value, 0)
+      const scoreReasons = [
+        ...scoreReasonsFor(scoreBreakdown),
+        ...(ageReason ? [ageReason] : []),
+      ]
+
+      rankedMatches.push({
+        lineIndex,
+        match: {
+          id: stablePersonMatchId(person.id, page, lineIndex, bestName.matchedName),
+          personId: person.id,
+          matchedName: bestName.matchedName,
+          reason,
+          score,
+          scoreBreakdown,
+          scoreReasons,
+          excerpt: excerptFor(line),
+          source,
+          sourceUrl: sourceUrlForPage(page),
+        },
+      })
+    }
+  }
+
+  return rankedMatches
+    .sort((first, second) =>
+      second.match.score - first.match.score ||
+      first.match.source.pageNumber - second.match.source.pageNumber ||
+      first.match.source.pageId.localeCompare(second.match.source.pageId) ||
+      first.lineIndex - second.lineIndex ||
+      first.match.id.localeCompare(second.match.id),
+    )
+    .map(({ match }) => match)
 }
