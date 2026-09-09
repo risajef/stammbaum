@@ -4,6 +4,7 @@ import type { DomainError, Person, PersonDraft } from '../domain/types'
 
 interface PersonInspectorProps {
   person: Person | null
+  initialDraft?: PersonDraft | null
   onSave: (draft: PersonDraft) => DomainError | null | undefined
   onCancel: () => void
 }
@@ -17,7 +18,7 @@ interface PersonFormValues {
   comment: string
 }
 
-const valuesFromPerson = (person: Person | null): PersonFormValues => ({
+const valuesFromPerson = (person: Pick<PersonDraft, 'firstName' | 'lastName' | 'gender' | 'birthYear' | 'deathYear' | 'comment'> | null): PersonFormValues => ({
   firstName: person?.firstName ?? '',
   lastName: person?.lastName ?? '',
   gender: person?.gender ?? '',
@@ -28,14 +29,14 @@ const valuesFromPerson = (person: Person | null): PersonFormValues => ({
 
 const dateFromValue = (value: string): string | null => value.trim() || null
 
-function PersonInspector({ person, onSave, onCancel }: PersonInspectorProps) {
-  const [values, setValues] = useState(() => valuesFromPerson(person))
+function PersonInspector({ person, initialDraft = null, onSave, onCancel }: PersonInspectorProps) {
+  const [values, setValues] = useState(() => valuesFromPerson(person ?? initialDraft))
   const [error, setError] = useState<DomainError | null>(null)
 
   useEffect(() => {
-    setValues(valuesFromPerson(person))
+    setValues(valuesFromPerson(person ?? initialDraft))
     setError(null)
-  }, [person])
+  }, [person, initialDraft])
 
   const updateValue = (field: keyof PersonFormValues, value: string) => {
     setValues((current) => ({ ...current, [field]: value }))
@@ -52,7 +53,7 @@ function PersonInspector({ person, onSave, onCancel }: PersonInspectorProps) {
       gender: values.gender || null,
       birthYear: dateFromValue(values.birthYear),
       deathYear: dateFromValue(values.deathYear),
-      position: person?.position ?? null,
+      position: person?.position ?? initialDraft?.position ?? null,
       comment: values.comment.trim() || null,
     }
     const saveError = onSave(draft)

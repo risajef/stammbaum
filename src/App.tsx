@@ -39,8 +39,20 @@ import PersonInspector from './components/PersonInspector'
 import RelationshipInspector, {
   type RelationshipFormDraft,
 } from './components/RelationshipInspector'
+import OcrSuggestionsPanel, {
+  type OcrImportViewState,
+} from './components/OcrSuggestionsPanel'
 import { createBrowserFilePort } from './persistence/file-port'
 import { parseFamilyTreeYaml, serializeFamilyTreeYaml } from './persistence/yaml'
+import { readOcrFromBackend } from './ocr/ocr-backend-client'
+import {
+  detectOcrSuggestions,
+  type OcrSuggestion,
+} from './ocr/ocr-suggestions'
+import {
+  acceptOcrSuggestion,
+  rejectOcrSuggestion,
+} from './ocr/ocr-suggestion-actions'
 
 import '@xyflow/react/dist/style.css'
 
@@ -48,6 +60,14 @@ const nodeTypes = { person: PersonNode }
 const proOptions = { hideAttribution: true }
 
 type ConnectionDraft = RelationshipConnectionDraft
+
+const createEmptyOcrImportState = (): OcrImportViewState => ({
+  status: 'idle',
+  backendStatus: 'unknown',
+  runs: [],
+  pages: [],
+  errors: [],
+})
 
 function FitViewOnRequest({ request }: { request: number }) {
   const { fitView } = useReactFlow()
@@ -157,6 +177,12 @@ function App() {
   const [localDistance, setLocalDistance] = useState(1)
   const [bloodOnly, setBloodOnly] = useState(false)
   const [hideLeaves, setHideLeaves] = useState(false)
+  const [ocrImportState, setOcrImportState] = useState<OcrImportViewState>(
+    createEmptyOcrImportState,
+  )
+  const [ocrPath, setOcrPath] = useState('')
+  const [ocrSuggestions, setOcrSuggestions] = useState<OcrSuggestion[]>([])
+  const [pendingOcrSuggestion, setPendingOcrSuggestion] = useState<OcrSuggestion | null>(null)
   const searchCursorRef = useRef(-1)
   const flowSurfaceRef = useRef<HTMLDivElement>(null)
   const viewAnchorId = isLocalView
@@ -230,6 +256,19 @@ function App() {
     }
   }, [searchMatches.length])
 
+  const handlePersonNavigation = (personId: string) => {
+    if (!document.persons.some((person) => person.id === personId)) {
+      return
+    }
+
+    setPendingOcrSuggestion(null)
+    setIsCreatingPerson(false)
+    setConnectionDraft(null)
+    setSelection({ type: 'person', id: personId })
+    setFocusPersonId(personId)
+    setFocusRequest((current) => current + 1)
+  }
+
   const handleSearchNavigation = (direction: -1 | 1) => {
     if (searchMatches.length === 0) {
       return
@@ -245,11 +284,7 @@ function App() {
     }
 
     searchCursorRef.current = nextCursor
-    setIsCreatingPerson(false)
-    setConnectionDraft(null)
-    setSelection({ type: 'person', id: match.id })
-    setFocusPersonId(match.id)
-    setFocusRequest((current) => current + 1)
+    handlePersonNavigation(match.id)
   }
 
   const handleLocalViewChange = (enabled: boolean) => {
@@ -297,7 +332,49 @@ function App() {
     setWorkflowError(null)
   }
 
+  const commitOcrSuggestion = (
+    suggestion: OcrSuggestion,
+    draft: PersonDraft,
+  ): DomainError | null => {
+    const result = acceptOcrSuggestion(document, suggestion, undefined, draft)
+    if (!result.ok) {
+      return result.error
+    }
+
+    const acceptedRelationship = result.value.relationships.at(-1)
+    const nextDocument = synchronizeInferredRelationships(result.value)
+    const acceptedRelationshipInNextDocument = acceptedRelationship
+      ? nextDocument.relationships.find((relationship) => relationship.id === acceptedRelationship.id)
+      : undefined
+    const newPerson = result.value.persons.find(
+      (person) => !document.persons.some((existingPerson) => existingPerson.id === person.id),
+    )
+
+    setDocument(nextDocument)
+    setOcrSuggestions((current) => rejectOcrSuggestion(current, suggestion.id))
+    setPendingOcrSuggestion(null)
+    setTemporaryPositions(new Map())
+    setFitViewRequest((current) => current + 1)
+    setIsDirty(true)
+    setSaveState('Ungespeichert')
+    setWorkflowError(null)
+    setIsCreatingPerson(false)
+    setConnectionDraft(null)
+    setSelection(
+      acceptedRelationshipInNextDocument
+        ? { type: 'relationship', id: acceptedRelationshipInNextDocument.id }
+        : newPerson
+          ? { type: 'person', id: newPerson.id }
+          : undefined,
+    )
+    return null
+  }
+
   const handlePersonSave = (draft: PersonDraft): DomainError | null => {
+    if (pendingOcrSuggestion) {
+      return commitOcrSuggestion(pendingOcrSuggestion, draft)
+    }
+
     const isNewPerson = !selectedPerson || isCreatingPerson
     const result = selectedPerson && !isCreatingPerson
       ? updatePerson(document, selectedPerson.id, draft)
@@ -341,6 +418,7 @@ function App() {
   }, [])
 
   const handlePersonCancel = () => {
+    setPendingOcrSuggestion(null)
     setIsCreatingPerson(false)
     setSelection(undefined)
     setConnectionDraft(null)
@@ -461,10 +539,62 @@ function App() {
     setSelection(undefined)
   }
 
+  const resetOcrState = () => {
+    setOcrImportState(createEmptyOcrImportState())
+    setOcrSuggestions([])
+  }
+
+  const handleOcrImport = async () => {
+    setOcrImportState((current) => ({
+      ...current,
+      status: 'loading',
+      backendStatus: 'connecting',
+      errors: [],
+    }))
+    setOcrSuggestions([])
+
+    try {
+      const result = await readOcrFromBackend(ocrPath)
+      setOcrImportState({
+        ...result,
+        status: result.runs.length > 0 ? 'loaded' : 'error',
+        backendStatus: 'connected',
+      })
+      setOcrSuggestions(result.pages.length > 0 ? detectOcrSuggestions(document, result.pages) : [])
+    } catch (error: unknown) {
+      setOcrImportState({
+        ...createEmptyOcrImportState(),
+        status: 'error',
+        backendStatus: error instanceof Error && error.message.includes('nicht erreichbar')
+          ? 'unreachable'
+          : 'connected',
+        errors: [{
+          message: error instanceof Error
+            ? `OCR-Import konnte nicht gestartet werden: ${error.message}`
+            : 'OCR-Import konnte nicht gestartet werden.',
+        }],
+      })
+    }
+  }
+
+  const handleOcrSuggestionOpen = (suggestion: OcrSuggestion) => {
+    setPendingOcrSuggestion(suggestion)
+    setIsCreatingPerson(true)
+    setSelection(undefined)
+    setConnectionDraft(null)
+    setWorkflowError(null)
+  }
+
+  const handleOcrSuggestionReject = (suggestion: OcrSuggestion) => {
+    setOcrSuggestions((current) => rejectOcrSuggestion(current, suggestion.id))
+    setWorkflowError(null)
+  }
+
   const visiblePersonCount = projection.nodes.length
   const hasActiveViewFilters = isLocalView || bloodOnly || hideLeaves
 
   const clearTransientState = () => {
+    setPendingOcrSuggestion(null)
     setSelection(undefined)
     setIsCreatingPerson(false)
     setConnectionDraft(null)
@@ -486,6 +616,7 @@ function App() {
     setFileName('stammbaum.yaml')
     setSaveState('Nicht gespeichert')
     setWorkflowError(null)
+    resetOcrState()
   }
 
   const handleOpenFile = async () => {
@@ -510,6 +641,7 @@ function App() {
       setFileName(openedFile.name)
       setSaveState(`Geöffnet: ${openedFile.name}`)
       setWorkflowError(null)
+      resetOcrState()
     } catch (error: unknown) {
       setWorkflowError(
         error instanceof Error
@@ -763,6 +895,7 @@ function App() {
           {isCreatingPerson || selection?.type === 'person' ? (
             <PersonInspector
               person={isCreatingPerson ? null : selectedPerson}
+              initialDraft={pendingOcrSuggestion?.newPerson ?? null}
               onSave={handlePersonSave}
               onCancel={handlePersonCancel}
             />
@@ -789,6 +922,18 @@ function App() {
             </div>
           )}
         </aside>
+
+        <OcrSuggestionsPanel
+          importState={ocrImportState}
+          suggestions={ocrSuggestions}
+          persons={document.persons}
+          ocrPath={ocrPath}
+          onPathChange={setOcrPath}
+          onImport={handleOcrImport}
+          onOpen={handleOcrSuggestionOpen}
+          onReferencePersonClick={handlePersonNavigation}
+          onReject={handleOcrSuggestionReject}
+        />
       </div>
     </main>
   )

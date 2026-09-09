@@ -942,6 +942,34 @@ describe('family tree graph projection', () => {
     expect(parentChild?.markerEnd).toBeDefined()
   })
 
+  it('projects a visible origin class and data value for every relationship origin', () => {
+    const document: FamilyTreeDocument = {
+      ...documentFixture,
+      relationships: [
+        { ...documentFixture.relationships[0], origin: 'manual' },
+        { ...documentFixture.relationships[1], origin: 'ocr-suggestion' },
+        {
+          ...documentFixture.relationships[1],
+          id: 'parent-child-automatic',
+          origin: 'automatic-inference',
+        },
+      ],
+    }
+
+    const projection = projectFamilyTree(document)
+
+    expect(projection.edges.map((edge) => edge.className)).toEqual([
+      expect.stringContaining('relationship-edge--manual'),
+      expect.stringContaining('relationship-edge--ocr-suggestion'),
+      expect.stringContaining('relationship-edge--automatic-inference'),
+    ])
+    expect(projection.edges.map((edge) => edge.data?.origin)).toEqual([
+      'manual',
+      'ocr-suggestion',
+      'automatic-inference',
+    ])
+  })
+
   it('exposes stable fit-view settings for an overview action', () => {
     const projection = projectFamilyTree(documentFixture)
 

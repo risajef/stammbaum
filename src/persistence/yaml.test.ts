@@ -48,6 +48,7 @@ const documentFixture: FamilyTreeDocument = {
       sourceUrl: 'https://example.org/register/28',
       comment: 'Standesamtliche Quelle.',
       inferredFrom: null,
+      origin: 'manual',
     },
     {
       id: 'parent-child-1',
@@ -58,6 +59,7 @@ const documentFixture: FamilyTreeDocument = {
       sourceUrl: null,
       comment: null,
       inferredFrom: null,
+      origin: 'manual',
     },
     {
       id: 'parent-child-inferred-1',
@@ -71,6 +73,7 @@ const documentFixture: FamilyTreeDocument = {
         rule: 'spouse-parent',
         sourceRelationshipId: 'parent-child-1',
       },
+      origin: 'automatic-inference',
     },
   ],
 }
@@ -82,6 +85,39 @@ describe('family tree YAML persistence', () => {
 
     expect(yaml).toContain('schemaVersion: 1')
     expect(result).toEqual({ ok: true, value: documentFixture })
+  })
+
+  it('round-trips relationship origins and derives compatible origins for legacy files', () => {
+    const documentWithOrigins = {
+      ...documentFixture,
+      relationships: documentFixture.relationships.map((relationship, index) => ({
+        ...relationship,
+        origin: index === 0
+          ? 'manual'
+          : index === 1
+            ? 'ocr-suggestion'
+            : 'automatic-inference',
+      })),
+    } as FamilyTreeDocument
+
+    const roundTrip = parseFamilyTreeYaml(serializeFamilyTreeYaml(documentWithOrigins))
+
+    expect(roundTrip).toEqual({ ok: true, value: documentWithOrigins })
+
+    const legacy = parseFamilyTreeYaml(
+      serializeFamilyTreeYaml(documentFixture).replace(/\n    origin: [^\n]+/g, ''),
+    )
+
+    expect(legacy).toMatchObject({
+      ok: true,
+      value: {
+        relationships: [
+          { id: 'marriage-1', origin: 'manual' },
+          { id: 'parent-child-1', origin: 'manual' },
+          { id: 'parent-child-inferred-1', origin: 'automatic-inference' },
+        ],
+      },
+    })
   })
 
   it('round-trips partial dates and normalises legacy numeric years', () => {
@@ -267,5 +303,54 @@ relationships:
     const result = parseFamilyTreeYaml(yaml)
 
     expect(result.ok).toBe(false)
+  })
+
+  it('does not export transient open suggestion state but exports accepted document data', () => {
+    const pendingDocument = {
+      ...documentFixture,
+      ocrSuggestions: [{
+        id: 'suggestion-1',
+        newPerson: { firstName: 'Lina', lastName: 'Weber' },
+      }],
+    } as FamilyTreeDocument & { ocrSuggestions: unknown[] }
+
+    const pendingYaml = serializeFamilyTreeYaml(pendingDocument)
+
+    expect(pendingYaml).not.toContain('ocrSuggestions')
+    expect(pendingYaml).not.toContain('suggestion-1')
+    expect(pendingYaml).not.toContain('Lina')
+
+    const acceptedYaml = serializeFamilyTreeYaml({
+      ...documentFixture,
+      persons: [
+        ...documentFixture.persons,
+        {
+          id: 'person-lina',
+          firstName: 'Lina',
+          lastName: 'Weber',
+          gender: 'woman',
+          birthYear: null,
+          deathYear: null,
+          position: null,
+        },
+      ],
+      relationships: [
+        ...documentFixture.relationships,
+        {
+          id: 'relationship-lina-parent',
+          type: 'parent-child',
+          fromId: 'woman-1',
+          toId: 'person-lina',
+          status: 'explicit',
+          sourceUrl: 'https://review.example/page/7',
+          comment: 'OCR-Begründung',
+          origin: 'ocr-suggestion',
+        },
+      ],
+    })
+
+    expect(acceptedYaml).toContain('origin: ocr-suggestion')
+    expect(acceptedYaml).toContain('sourceUrl: https://review.example/page/7')
+    expect(acceptedYaml).toContain('comment: OCR-Begründung')
   })
 })

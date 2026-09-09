@@ -4,21 +4,37 @@ Diese Fähigkeit macht lokale Kirchenbuch- und OCR-Transkriptionen als quellenbe
 
 ## ADDED Requirements
 
-### Requirement: Lokale OCR-Quellen können geladen werden
+### Requirement: Lokale OCR-Quellen können über einen Pfad geladen werden
 
-Die Anwendung MUST einen lokalen OCR-Ordner einlesen können, der Laufmetadaten in `run.json` und transkribierte Seiten unter `text/page-*.txt` enthält. Sie MUST ausschließlich vom Benutzer ausgewählte lokale Dateien lesen, nicht auf einen festen Schwesterordner zugreifen und nicht voraussetzen, dass ein Netzwerkdienst erreichbar ist. Nicht unterstützte, unvollständige oder nicht lesbare Dateien MUST übersprungen und verständlich als Problem oder fehlende Quelle angezeigt werden.
+Die Anwendung MUST einen vom Benutzer eingegebenen Linux-Dateisystempfad an einen lokalen OCR-Dienst übergeben können. Der Dienst MUST die dort vorhandenen Laufmetadaten in `run.json` und transkribierten Seiten unter `text/page-*.txt` read-only lesen; die Anwendung DARF dafür keinen Browser-Ordnerupload und keine Übertragung der lokalen Dateien an die Website verlangen. Nicht unterstützte, unvollständige oder nicht lesbare Dateien MUST übersprungen und verständlich als Problem oder fehlende Quelle angezeigt werden.
 
-#### Scenario: OCR-Ordner wird erfolgreich geladen
+#### Scenario: OCR-Pfad wird erfolgreich geladen
 
-- **GIVEN** die Benutzerin wählt einen OCR-Ordner mit mindestens einem gültigen Lauf und einer lesbaren Textseite aus
+- **GIVEN** die Benutzerin trägt einen erreichbaren Linux-Pfad mit mindestens einem gültigen Lauf und einer lesbaren Textseite ein und der lokale OCR-Dienst läuft
 - **WHEN** sie den OCR-Import startet
 - **THEN** zeigt die Anwendung den geladenen Lauf beziehungsweise die gelesenen Quellen an und kann daraus Vorschläge berechnen
 
-#### Scenario: Ungültige OCR-Dateien verändern den Stammbaum nicht
+#### Scenario: Nicht erreichbarer OCR-Pfad verändert den Stammbaum nicht
 
-- **GIVEN** der ausgewählte Ordner enthält kein gültiges `run.json` oder beschädigte Textdateien
+- **GIVEN** der eingegebene Pfad existiert nicht, ist keine lesbare Quelle oder der lokale OCR-Dienst ist nicht erreichbar
 - **WHEN** die Benutzerin den OCR-Import startet
 - **THEN** zeigt die Anwendung einen verständlichen Fehler- oder Leerzustand und lässt den geladenen Stammbaum unverändert
+
+### Requirement: OCR-Läufe werden nachvollziehbar ausgewählt
+
+Der OCR-Dienst MUST nur vollständige Läufe berücksichtigen, je Buch und Modell den neuesten vollständigen Lauf auswählen und den Lauf des Modells `kraken-pp-ocrv6-medium` gegenüber dem deutschen Handschriftmodell priorisieren, wenn beide dieselbe Seite oder denselben Vorschlag belegen. Seiten aus den genealogisch relevanten Abschnitten `Familienregister`, `Taufen`, `Heiraten` und `Begräbnisse` MÜSSEN als Quellen nutzbar sein; Verwaltungs- und reine Namensregisterseiten DÜRFEN keine gleichwertige Vorschlagsquelle darstellen.
+
+#### Scenario: Unvollständige oder ältere Läufe werden nicht als Primärquelle verwendet
+
+- **GIVEN** ein OCR-Pfad enthält mehrere Läufe desselben Buchs, darunter laufende, unvollständige und mehrere vollständige Läufe
+- **WHEN** der Dienst die Quellen liest
+- **THEN** werden nur vollständige Läufe berücksichtigt und der neueste vollständige Lauf je Buch und Modell angezeigt
+
+#### Scenario: PP-OCRv6 gewinnt bei doppelter Evidenz
+
+- **GIVEN** beide Modelle liefern für dieselbe Buchseite einen gleichartigen Familienhinweis
+- **WHEN** die Anwendung Vorschläge dedupliziert
+- **THEN** bleibt der PP-OCRv6-Nachweis als primäre Quelle erhalten und es erscheint kein doppelter Vorschlag
 
 ### Requirement: OCR-Daten erzeugen nachvollziehbare Personenvorschläge
 
@@ -42,15 +58,15 @@ Die Anwendung MUST aus den geladenen OCR-Texten nur Kandidaten ableiten, die üb
 - **WHEN** die Anwendung die Quellen auswertet
 - **THEN** wird kein unmarkierter Stammbaum-Eintrag erzeugt; der Text darf höchstens als nicht übernommener Hinweis angezeigt werden
 
-### Requirement: Vorschläge zeigen ihre Quelle direkt an
+### Requirement: Vorschläge zeigen ihre Herkunft mit verlinktem Quell- und Dokumentennachweis
 
-Die Anwendung MUST bei jedem angezeigten Vorschlag einen klickbaren HTTP- oder HTTPS-Link zu mindestens der zugehörigen Kirchenbuchseite anzeigen. Die Vorschlagskarte MUST außerdem erkennen lassen, dass es sich um einen OCR-Vorschlag und nicht um eine bereits manuell erfasste Beziehung handelt. Ein nicht auflösbarer Review-Link DARF die Prüfung oder Ablehnung des Vorschlags nicht verhindern.
+Die Anwendung MUST bei jedem angezeigten Vorschlag das Quellendokument (Buch), das Modell und die Seite als klickbaren Link zur Review-Anwendung (`target="_blank"`) anzeigen und die Herkunft als OCR-Vorschlag erkennbar machen. Interne OCR-Dateipfade MÜSSEN im sichtbaren OCR-Panel verborgen bleiben. Die Vorschlagsprüfung und Ablehnung DARF nicht von der Erreichbarkeit des Review-Servers abhängen.
 
-#### Scenario: Seitenlink ist im Vorschlag sichtbar
+#### Scenario: Vorschlagskarten zeigen klickbaren Quelllink mit Dokumentennamen
 
-- **GIVEN** ein gültiger OCR-Vorschlag wurde berechnet
-- **WHEN** die Vorschlagsliste angezeigt wird
-- **THEN** sieht die Benutzerin einen Seitenlink mit Lauf- und Seitennachweis und kann ihn in einem neuen Browserkontext öffnen
+- **GIVEN** ein gültiger OCR-Vorschlag und gegebenenfalls einzelne nicht lesbare OCR-Dateien wurden berechnet
+- **WHEN** die Vorschlagsliste unterhalb der Stammbaum-Arbeitsfläche angezeigt wird
+- **THEN** sieht die Benutzerin Vorschlagskarten mit einem klickbaren Link, der Dokumentenname, Modell und Seite nennt und zur Review-URL führt, während interne Dateipfade verborgen bleiben
 
 #### Scenario: Vorschlagsstatus bleibt von bestehenden Kanten unterscheidbar
 

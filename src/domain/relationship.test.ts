@@ -103,9 +103,36 @@ describe('relationship domain operations', () => {
             sourceUrl: null,
             comment: null,
             inferredFrom: null,
+            origin: 'manual',
           },
         ],
       }),
+    })
+  })
+
+  it('marks manually created and explicitly sourced relationships with their origin', () => {
+    const marriage = createMarriage(
+      documentWithPeople(),
+      'woman-1',
+      'man-1',
+      {},
+      () => 'marriage-1',
+    )
+    expect(marriage).toMatchObject({
+      ok: true,
+      value: { relationships: [{ id: 'marriage-1', origin: 'manual' }] },
+    })
+
+    const ocrRelationship = createParentChild(
+      documentWithPeople(),
+      'woman-1',
+      'child-1',
+      { origin: 'ocr-suggestion' },
+      () => 'ocr-parent-child-1',
+    )
+    expect(ocrRelationship).toMatchObject({
+      ok: true,
+      value: { relationships: [{ id: 'ocr-parent-child-1', origin: 'ocr-suggestion' }] },
     })
   })
 

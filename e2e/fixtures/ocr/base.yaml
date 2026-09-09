@@ -1,0 +1,10 @@
+schemaVersion: 1
+persons:
+  - id: parent-1
+    firstName: Anna
+    lastName: Weber
+    gender: woman
+    birthYear: null
+    deathYear: null
+    position: null
+relationships: []

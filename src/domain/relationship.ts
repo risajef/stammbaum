@@ -11,6 +11,7 @@ import type {
   PartialDate,
   Person,
   Relationship,
+  RelationshipOrigin,
   RelationshipStatus,
   Result,
 } from './types'
@@ -20,6 +21,7 @@ export interface RelationshipOptions {
   status?: RelationshipStatus
   sourceUrl?: string | null
   comment?: string | null
+  origin?: RelationshipOrigin
 }
 
 export type RelationshipChanges = RelationshipOptions
@@ -85,7 +87,12 @@ const validateMarriageStartDate = (
 
 const relationshipOptions = (
   options: RelationshipOptions,
-): Result<{ status: RelationshipStatus; sourceUrl: string | null; comment: string | null }> => {
+): Result<{
+  status: RelationshipStatus
+  sourceUrl: string | null
+  comment: string | null
+  origin: RelationshipOrigin
+}> => {
   const status = options.status ?? 'explicit'
   if (status !== 'explicit' && status !== 'inferred') {
     return {
@@ -96,8 +103,19 @@ const relationshipOptions = (
 
   const sourceUrl = options.sourceUrl ?? null
   const comment = options.comment?.trim() || null
+  const origin = options.origin ?? 'manual'
+  if (
+    origin !== 'manual' &&
+    origin !== 'ocr-suggestion' &&
+    origin !== 'automatic-inference'
+  ) {
+    return {
+      ok: false,
+      error: error('invalid-origin', 'Die Beziehungsherkunft ist ungültig.'),
+    }
+  }
   if (sourceUrl === null) {
-    return { ok: true, value: { status, sourceUrl: null, comment } }
+    return { ok: true, value: { status, sourceUrl: null, comment, origin } }
   }
 
   try {
@@ -116,7 +134,7 @@ const relationshipOptions = (
     }
   }
 
-  return { ok: true, value: { status, sourceUrl: sourceUrl.trim(), comment } }
+  return { ok: true, value: { status, sourceUrl: sourceUrl.trim(), comment, origin } }
 }
 
 const hasSamePair = (relationship: Relationship, firstId: string, secondId: string) =>
@@ -436,6 +454,12 @@ export const updateRelationship = (
       changes.sourceUrl === undefined ? currentRelationship.sourceUrl : changes.sourceUrl,
     comment:
       changes.comment === undefined ? currentRelationship.comment : changes.comment,
+    origin:
+      changes.origin === undefined
+        ? currentRelationship.origin ?? (currentRelationship.inferredFrom
+          ? 'automatic-inference'
+          : 'manual')
+        : changes.origin,
   })
   if (!metadata.ok) {
     return metadata

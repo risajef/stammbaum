@@ -79,6 +79,24 @@ describe('RelationshipInspector', () => {
     expect(screen.queryByRole('button', { name: 'Beziehung entfernen' })).toBeNull()
   })
 
+  it.each([
+    ['manual', 'Manuell'],
+    ['ocr-suggestion', 'OCR-Vorschlag'],
+    ['automatic-inference', 'Automatische Ableitung'],
+  ] as const)('shows the %s relationship origin as a visible badge', (origin, label) => {
+    render(
+      <RelationshipInspector
+        relationship={{ ...marriage, origin }}
+        sourcePerson={sourcePerson}
+        targetPerson={targetPerson}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(label)).toHaveClass(`relationship-origin--${origin}`)
+  })
+
   it('shows a marriage start date and its implicit end date', () => {
     const onSave = vi.fn()
     const source = { ...sourcePerson, deathYear: '1925-08-12' }

@@ -4,6 +4,8 @@ export type RelationshipType = 'marriage' | 'parent-child'
 
 export type RelationshipStatus = 'explicit' | 'inferred'
 
+export type RelationshipOrigin = 'manual' | 'ocr-suggestion' | 'automatic-inference'
+
 export type PartialDate = string
 
 export type DateValue = PartialDate | number
@@ -39,6 +41,7 @@ export interface Relationship {
   sourceUrl: string | null
   comment?: string | null
   inferredFrom?: RelationshipInference | null
+  origin?: RelationshipOrigin
 }
 
 export interface FamilyTreeDocument {

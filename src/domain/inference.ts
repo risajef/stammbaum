@@ -3,7 +3,8 @@ import { comparePartialDates } from './life-date'
 
 const relationshipKey = (fromId: string, toId: string) => `${fromId}\u0000${toId}`
 
-const isAutomatic = (relationship: Relationship) => Boolean(relationship.inferredFrom)
+const isAutomatic = (relationship: Relationship) =>
+  relationship.origin === 'automatic-inference' || Boolean(relationship.inferredFrom)
 
 const personLabel = (person: Person | undefined) =>
   person ? `${person.firstName} ${person.lastName}` : 'Unbekannte Person'
@@ -135,6 +136,7 @@ export const synchronizeInferredRelationships = (
           rule: 'spouse-parent',
           sourceRelationshipId: sourceRelationship.id,
         },
+        origin: 'automatic-inference',
       }
       inferredRelationships.push(relationship)
       existingPairs.add(pairKey)

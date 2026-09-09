@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { validateFamilyTreeDocument } from '../domain/document-validation'
 import { normalizePartialDate } from '../domain/life-date'
+import { getRelationshipOrigin } from '../domain/relationship-origin'
 import type { DomainError, FamilyTreeDocument, Result } from '../domain/types'
 
 const positionSchema = z
@@ -43,6 +44,10 @@ const relationshipSchema = z
     sourceUrl: z.string().nullable().optional(),
     comment: z.string().nullable().optional(),
     inferredFrom: inferenceSchema.nullable().optional(),
+    origin: z
+      .enum(['manual', 'ocr-suggestion', 'automatic-inference'])
+      .nullable()
+      .optional(),
   })
   .strict()
 
@@ -95,6 +100,7 @@ const normaliseDocument = (rawDocument: z.infer<typeof rawDocumentSchema>): Fami
       sourceUrl: relationship.sourceUrl ?? null,
       comment: normaliseComment(relationship.comment),
       inferredFrom: relationship.inferredFrom ?? null,
+      origin: getRelationshipOrigin(relationship),
     }
   }),
 })
@@ -126,7 +132,7 @@ export const parseFamilyTreeYaml = (source: string): Result<FamilyTreeDocument> 
 
 export const serializeFamilyTreeYaml = (document: FamilyTreeDocument): string => {
   const normalizedDocument: FamilyTreeDocument = {
-    ...document,
+    schemaVersion: 1,
     persons: document.persons.map((person) => ({
       ...person,
       birthYear: normalizePartialDate(person.birthYear),
@@ -137,6 +143,7 @@ export const serializeFamilyTreeYaml = (document: FamilyTreeDocument): string =>
       ...(relationship.type === 'marriage'
         ? { startDate: normalizePartialDate(relationship.startDate) }
         : {}),
+      origin: getRelationshipOrigin(relationship),
     })),
   }
   const validationError = validateFamilyTreeDocument(normalizedDocument)

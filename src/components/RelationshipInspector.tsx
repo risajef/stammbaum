@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
 
 import { getImplicitMarriageEndDate } from '../domain/relationship'
+import {
+  getRelationshipOrigin,
+  relationshipOriginClassName,
+  relationshipOriginLabel,
+} from '../domain/relationship-origin'
 import type {
   DomainError,
   Person,
@@ -86,6 +91,7 @@ function RelationshipInspector({
         [sourcePerson, targetPerson].filter((person): person is Person => Boolean(person)),
       )
     : null
+  const relationshipOrigin = relationship ? getRelationshipOrigin(relationship) : null
 
   return (
     <form className="relationship-form" onSubmit={handleSubmit} noValidate>
@@ -110,6 +116,16 @@ function RelationshipInspector({
       >
         {values.status === 'inferred' ? 'Geschlussfolgert' : 'Explizit'}
       </div>
+
+      {relationshipOrigin && (
+        <div
+          aria-label="Herkunft"
+          className={`relationship-origin ${relationshipOriginClassName(relationshipOrigin)}`}
+          role="status"
+        >
+          {relationshipOriginLabel(relationshipOrigin)}
+        </div>
+      )}
 
       {relationship?.comment && (
         <p className="relationship-comment">{relationship.comment}</p>

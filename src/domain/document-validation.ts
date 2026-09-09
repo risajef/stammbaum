@@ -1,5 +1,6 @@
 import type { DomainError, FamilyTreeDocument, Relationship } from './types'
 import { comparePartialDates, isValidPartialDate } from './life-date'
+import { getRelationshipOrigin } from './relationship-origin'
 
 const error = (code: string, message: string, entityId?: string): DomainError => ({
   code,
@@ -112,6 +113,15 @@ export const validateFamilyTreeDocument = (
       return error('invalid-status', 'Der Beziehungsstatus ist ungültig.', relationship.id)
     }
 
+    if (
+      relationship.origin !== undefined &&
+      relationship.origin !== 'manual' &&
+      relationship.origin !== 'ocr-suggestion' &&
+      relationship.origin !== 'automatic-inference'
+    ) {
+      return error('invalid-origin', 'Die Beziehungsherkunft ist ungültig.', relationship.id)
+    }
+
     if (relationship.type === 'marriage') {
       if (!isValidPartialDate(relationship.startDate)) {
         return error(
@@ -189,6 +199,14 @@ export const validateFamilyTreeDocument = (
           relationship.id,
         )
       }
+    }
+
+    if (getRelationshipOrigin(relationship) === 'automatic-inference' && !relationship.inferredFrom) {
+      return error(
+        'invalid-inference',
+        'Automatische Beziehungen müssen eine gültige Ableitungsquelle besitzen.',
+        relationship.id,
+      )
     }
 
     if (relationship.type === 'marriage') {

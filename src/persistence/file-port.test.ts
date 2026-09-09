@@ -94,4 +94,5 @@ describe('browser file port', () => {
     expect(click).toHaveBeenCalledOnce()
     expect(urlApi.revokeObjectURL).toHaveBeenCalledWith('blob:stammbaum')
   })
+
 })

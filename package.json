@@ -9,6 +9,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "backend": "node server/ocr-server.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

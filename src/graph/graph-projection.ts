@@ -7,6 +7,10 @@ import type {
   Relationship,
 } from '../domain/types'
 import { parsePartialDate, type PartialDateParts } from '../domain/life-date'
+import {
+  getRelationshipOrigin,
+  relationshipOriginLabel,
+} from '../domain/relationship-origin'
 import { filterFamilyTreeDocument, type GraphViewOptions } from './graph-view'
 import { relationshipHandleIds } from './relationship-connection'
 
@@ -23,6 +27,8 @@ export type RelationshipEdgeData = Record<string, unknown> & {
   relationshipType: Relationship['type']
   status: Relationship['status']
   sourceUrl: Relationship['sourceUrl']
+  origin: NonNullable<Relationship['origin']>
+  originLabel: string
 }
 
 export type GraphSelection =
@@ -617,9 +623,12 @@ const projectRelationship = (
   relationship: Relationship,
   selection: GraphSelection,
 ): Edge<RelationshipEdgeData> => {
+  const origin = getRelationshipOrigin(relationship)
   const isInferred = relationship.status === 'inferred'
   const isParentChild = relationship.type === 'parent-child'
-  const edgeColor = isParentChild ? '#385b59' : '#c6654c'
+  const edgeColor = origin === 'ocr-suggestion'
+    ? '#a77b28'
+    : isParentChild ? '#385b59' : '#c6654c'
 
   return {
     id: relationship.id,
@@ -636,6 +645,7 @@ const projectRelationship = (
     className: [
       'relationship-edge',
       isInferred ? 'relationship-edge--inferred' : 'relationship-edge--explicit',
+      `relationship-edge--${origin}`,
       isParentChild ? 'relationship-edge--parent-child' : 'relationship-edge--marriage',
     ].join(' '),
     label: isParentChild ? '' : '⚭',
@@ -653,6 +663,8 @@ const projectRelationship = (
       relationshipType: relationship.type,
       status: relationship.status,
       sourceUrl: relationship.sourceUrl,
+      origin,
+      originLabel: relationshipOriginLabel(origin),
     },
     ...(isParentChild
       ? {
