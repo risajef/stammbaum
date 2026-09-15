@@ -63,7 +63,6 @@ interface FamilyComponent {
   id: string
   memberIds: string[]
   order: number
-  height: number
   layer: number
   hasMarriage: boolean
 }
@@ -156,7 +155,6 @@ const createFamilyComponents = (document: FamilyTreeDocument) => {
       id,
       memberIds,
       order,
-      height: 0,
       layer: 0,
       hasMarriage,
     }
@@ -227,26 +225,6 @@ const selectEarliestKnownBirthDate = (
   return earliestDate
 }
 
-const selectOldestPerson = (persons: readonly Person[]): Person | undefined => {
-  const firstPerson = persons[0]
-  if (!firstPerson) return undefined
-
-  let oldestPerson = firstPerson
-  let oldestDate = parsePartialDate(firstPerson.birthYear)
-
-  for (const person of persons.slice(1)) {
-    const birthDate = parsePartialDate(person.birthYear)
-    if (!birthDate) continue
-
-    if (!oldestDate || compareKnownBirthDates(birthDate, oldestDate) === -1) {
-      oldestPerson = person
-      oldestDate = birthDate
-    }
-  }
-
-  return oldestPerson
-}
-
 const createWeakComponentGroups = (
   components: readonly FamilyComponent[],
   parentComponents: ReadonlyMap<string, ReadonlySet<string>>,
@@ -292,67 +270,131 @@ const assignComponentLayers = (
   graph: FamilyComponentGraph,
 ) => {
   const componentById = new Map(graph.components.map((component) => [component.id, component]))
-  const heightCache = new Map<string, number>()
-  const getHeight = (componentId: string, visiting: Set<string> = new Set()): number => {
-    const cached = heightCache.get(componentId)
-    if (cached !== undefined) {
-      return cached
-    }
-    if (visiting.has(componentId)) {
-      return 0
+  const weakGroups = createWeakComponentGroups(graph.components, graph.parentComponents)
+  const rootComponentId = document.persons[0]
+    ? graph.componentByPerson.get(document.persons[0].id)
+    : undefined
+  const componentOrder = new Map(graph.components.map((component) => [component.id, component.order]))
+
+  const sortedComponents = (componentIds: Iterable<string>) =>
+    [...componentIds].sort(
+      (firstId, secondId) =>
+        (componentOrder.get(firstId) ?? 0) - (componentOrder.get(secondId) ?? 0),
+    )
+
+  const topologicalOrder = (group: readonly string[]) => {
+    const groupSet = new Set(group)
+    const indegree = new Map(group.map((componentId) => [componentId, 0]))
+    for (const componentId of group) {
+      const parentIds = graph.parentComponents.get(componentId) ?? new Set<string>()
+      indegree.set(
+        componentId,
+        [...parentIds].filter((parentId) => groupSet.has(parentId)).length,
+      )
     }
 
-    const nextVisiting = new Set(visiting)
-    nextVisiting.add(componentId)
-    const children = graph.childrenByComponent.get(componentId) ?? new Set<string>()
-    const height = children.size === 0
-      ? 0
-      : Math.max(...[...children].map((childId) => getHeight(childId, nextVisiting) + 1))
-    heightCache.set(componentId, height)
-    return height
+    const pending = sortedComponents(group.filter((componentId) => indegree.get(componentId) === 0))
+    const result: string[] = []
+    while (pending.length > 0) {
+      const currentId = pending.shift()
+      if (!currentId) continue
+      result.push(currentId)
+
+      for (const childId of sortedComponents(graph.childrenByComponent.get(currentId) ?? [])) {
+        if (!groupSet.has(childId)) continue
+        const nextIndegree = (indegree.get(childId) ?? 0) - 1
+        indegree.set(childId, nextIndegree)
+        if (nextIndegree === 0) {
+          pending.push(childId)
+          pending.sort((firstId, secondId) =>
+            (componentOrder.get(firstId) ?? 0) - (componentOrder.get(secondId) ?? 0),
+          )
+        }
+      }
+    }
+
+    if (result.length < group.length) {
+      const resultSet = new Set(result)
+      result.push(...sortedComponents(group.filter((componentId) => !resultSet.has(componentId))))
+    }
+    return result
   }
 
-  graph.components.forEach((component) => {
-    component.height = getHeight(component.id)
-  })
-
-  const globalRootPerson = selectOldestPerson(document.persons)
-  const globalRootComponentId = globalRootPerson
-    ? graph.componentByPerson.get(globalRootPerson.id)
-    : undefined
-  const weakGroups = createWeakComponentGroups(graph.components, graph.parentComponents)
+  const neighbours = (componentId: string) => {
+    const parentNeighbours = [...(graph.parentComponents.get(componentId) ?? [])].map((id) => ({
+      id,
+      offset: -1,
+    }))
+    const childNeighbours = [...(graph.childrenByComponent.get(componentId) ?? [])].map((id) => ({
+      id,
+      offset: 1,
+    }))
+    return [...parentNeighbours, ...childNeighbours].sort(
+      (first, second) =>
+        (componentOrder.get(first.id) ?? 0) - (componentOrder.get(second.id) ?? 0),
+    )
+  }
 
   for (const group of weakGroups) {
-    const groupSet = new Set(group)
-    const groupPersons = document.persons.filter((person) =>
-      groupSet.has(graph.componentByPerson.get(person.id) ?? ''),
-    )
-    const localRootPerson = selectOldestPerson(groupPersons)
-    const localRootComponentId = group.includes(globalRootComponentId ?? '')
-      ? globalRootComponentId
-      : localRootPerson
-        ? graph.componentByPerson.get(localRootPerson.id)
-        : group[0]
-    const rootHeight = componentById.get(localRootComponentId ?? '')?.height ?? 0
+    const anchorId = group.includes(rootComponentId ?? '') ? rootComponentId : group[0]
+    if (!anchorId) continue
+
+    const layers = new Map<string, number>([[anchorId, 0]])
+    const pending = [anchorId]
+    for (let index = 0; index < pending.length; index += 1) {
+      const currentId = pending[index]
+      const currentLayer = layers.get(currentId) ?? 0
+      for (const neighbour of neighbours(currentId)) {
+        if (layers.has(neighbour.id)) continue
+        layers.set(neighbour.id, currentLayer + neighbour.offset)
+        pending.push(neighbour.id)
+      }
+    }
+
+    const order = topologicalOrder(group)
+    const ancestors = new Set<string>([anchorId])
+    const ancestorPending = [anchorId]
+    for (let index = 0; index < ancestorPending.length; index += 1) {
+      const currentId = ancestorPending[index]
+      for (const parentId of graph.parentComponents.get(currentId) ?? []) {
+        if (ancestors.has(parentId)) continue
+        ancestors.add(parentId)
+        ancestorPending.push(parentId)
+      }
+    }
+
+    // On the ancestor side, work backwards from the anchor so a longer path
+    // gets compressed into a two-generation gap at the shorter branch.
+    for (const childId of [...order].reverse()) {
+      const childLayer = layers.get(childId)
+      if (childLayer === undefined || !ancestors.has(childId)) continue
+
+      for (const parentId of graph.parentComponents.get(childId) ?? []) {
+        if (parentId === anchorId) continue
+        const currentLayer = layers.get(parentId) ?? childLayer - 1
+        layers.set(parentId, Math.min(currentLayer, childLayer - 1))
+      }
+    }
+
+    // On the descendant and side-branch side, prefer the deepest parent path.
+    // This makes the only unavoidable mismatch at a merge a gap of two.
+    for (const childId of order) {
+      if (childId === anchorId) continue
+      const parentLayers = [...(graph.parentComponents.get(childId) ?? [])]
+        .map((parentId) => layers.get(parentId))
+        .filter((layer): layer is number => layer !== undefined)
+      if (parentLayers.length === 0) continue
+
+      const currentLayer = layers.get(childId) ?? 0
+      layers.set(childId, Math.max(currentLayer, Math.max(...parentLayers) + 1))
+    }
 
     group.forEach((componentId) => {
       const component = componentById.get(componentId)
       if (!component) return
-      component.layer = rootHeight - component.height
+      component.layer = layers.get(componentId) ?? 0
     })
   }
-
-  const componentsByHeight = [...graph.components].sort(
-    (first, second) => second.height - first.height || first.order - second.order,
-  )
-  componentsByHeight.forEach((component) => {
-    const parentLayers = [...(graph.parentComponents.get(component.id) ?? [])]
-      .map((parentId) => componentById.get(parentId)?.layer)
-      .filter((layer): layer is number => layer !== undefined)
-    if (parentLayers.length === 0) return
-
-    component.layer = Math.max(...parentLayers) + 1
-  })
 }
 
 interface ComponentInterval {

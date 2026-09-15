@@ -9,7 +9,7 @@ import {
   type NodeChange,
 } from '@xyflow/react'
 
-import { createEmptyDocument, createPerson, updatePerson } from './domain/person'
+import { createEmptyDocument, createPerson, mergePersons, updatePerson } from './domain/person'
 import { synchronizeInferredRelationships } from './domain/inference'
 import {
   createMarriage,
@@ -159,6 +159,7 @@ function FocusPersonOnRequest({ personId, request }: FocusPersonOnRequestProps) 
 function App() {
   const [document, setDocument] = useState<FamilyTreeDocument>(createEmptyDocument)
   const [selection, setSelection] = useState<GraphSelection>(undefined)
+  const [mergeSourceId, setMergeSourceId] = useState<string | null>(null)
   const [isCreatingPerson, setIsCreatingPerson] = useState(false)
   const [connectionDraft, setConnectionDraft] = useState<ConnectionDraft | null>(null)
   const [isDirty, setIsDirty] = useState(false)
@@ -263,8 +264,73 @@ function App() {
     }
   }, [searchMatches.length])
 
+  const handleMergeStart = () => {
+    if (!selectedPerson) {
+      return
+    }
+
+    setPendingOcrSuggestion(null)
+    setIsCreatingPerson(false)
+    setConnectionDraft(null)
+    setMergeSourceId(selectedPerson.id)
+    setWorkflowError(null)
+  }
+
+  const handleMergeCandidate = (personId: string) => {
+    if (!mergeSourceId) {
+      return
+    }
+
+    if (mergeSourceId === personId) {
+      setWorkflowError('Wähle eine andere Person für die Fusion aus.')
+      return
+    }
+
+    const survivor = document.persons.find((person) => person.id === mergeSourceId)
+    const merged = document.persons.find((person) => person.id === personId)
+    if (!survivor || !merged) {
+      setWorkflowError('Beide Personen müssen für die Fusion vorhanden sein.')
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Personen fusionieren?\n\n${survivor.firstName} ${survivor.lastName} bleibt erhalten. ` +
+      `${merged.firstName} ${merged.lastName} wird dauerhaft entfernt. ` +
+      'Dieser Vorgang kann nicht rückgängig gemacht werden.',
+    )
+    if (!confirmed) {
+      setWorkflowError(null)
+      return
+    }
+
+    const result = mergePersons(document, mergeSourceId, personId)
+    if (!result.ok) {
+      setWorkflowError(result.error.message)
+      return
+    }
+
+    setDocument(result.value)
+    setTemporaryPositions(new Map())
+    setFitViewRequest((current) => current + 1)
+    setPersonToCenter(null)
+    setFocusPersonId(null)
+    setMergeSourceId(null)
+    setPendingOcrSuggestion(null)
+    setIsCreatingPerson(false)
+    setConnectionDraft(null)
+    setIsDirty(true)
+    setSaveState('Ungespeichert')
+    setWorkflowError(null)
+    setSelection({ type: 'person', id: mergeSourceId })
+  }
+
   const handlePersonNavigation = (personId: string) => {
     if (!document.persons.some((person) => person.id === personId)) {
+      return
+    }
+
+    if (mergeSourceId) {
+      handleMergeCandidate(personId)
       return
     }
 
@@ -336,6 +402,7 @@ function App() {
     }
 
     setIsCreatingPerson(false)
+    setMergeSourceId(null)
     setSelection(undefined)
     setConnectionDraft(classifiedConnection.value)
     setWorkflowError(null)
@@ -428,6 +495,7 @@ function App() {
 
   const handlePersonCancel = () => {
     setPendingOcrSuggestion(null)
+    setMergeSourceId(null)
     setIsCreatingPerson(false)
     setSelection(undefined)
     setConnectionDraft(null)
@@ -601,6 +669,7 @@ function App() {
 
   const handleOcrSuggestionOpen = (suggestion: OcrSuggestion) => {
     setPendingOcrSuggestion(suggestion)
+    setMergeSourceId(null)
     setIsCreatingPerson(true)
     setSelection(undefined)
     setConnectionDraft(null)
@@ -618,6 +687,7 @@ function App() {
   const clearTransientState = () => {
     setPendingOcrSuggestion(null)
     setSelection(undefined)
+    setMergeSourceId(null)
     setIsCreatingPerson(false)
     setConnectionDraft(null)
   }
@@ -859,6 +929,11 @@ function App() {
               panOnDrag
               onNodesChange={handleNodesChange}
               onNodeClick={(_event, node) => {
+                if (mergeSourceId) {
+                  handleMergeCandidate(node.id)
+                  return
+                }
+
                 setIsCreatingPerson(false)
                 setConnectionDraft(null)
                 searchCursorRef.current = searchMatches.findIndex((person) => person.id === node.id)
@@ -874,6 +949,7 @@ function App() {
               }}
               onPaneClick={() => {
                 setIsCreatingPerson(false)
+                setMergeSourceId(null)
                 setConnectionDraft(null)
                 setSelection(undefined)
               }}
@@ -920,6 +996,8 @@ function App() {
               initialDraft={pendingOcrSuggestion?.newPerson ?? null}
               onSave={handlePersonSave}
               onCancel={handlePersonCancel}
+              onMerge={handleMergeStart}
+              mergeMode={Boolean(mergeSourceId)}
             />
           ) : connectionDraft || selection?.type === 'relationship' ? (
             <RelationshipInspector

@@ -377,6 +377,74 @@ describe('family tree graph projection', () => {
     expect(y('yaml-second')).toBeLessThan(y('yaml-first') ?? 0)
   })
 
+  it('uses the first YAML person as the root generation even when an older parent exists', () => {
+    const document: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        layoutPerson('yaml-root', '1900'),
+        layoutPerson('older-parent', '1800'),
+        layoutPerson('descendant', '1920'),
+      ],
+      relationships: [
+        parentChild('older-root', 'older-parent', 'yaml-root'),
+        parentChild('root-descendant', 'yaml-root', 'descendant'),
+      ],
+    }
+
+    const projection = projectFamilyTree(document)
+    const y = (id: string) => projection.nodes.find((node) => node.id === id)?.position.y
+    const rootY = y('yaml-root') ?? 0
+
+    expect(rootY).toBe(80)
+    expect(y('older-parent')).toBe(rootY - 132)
+    expect(y('descendant')).toBe(rootY + 132)
+  })
+
+  it('keeps a shallow leaf above a much deeper leaf in the same family graph', () => {
+    const deepBranch = Array.from({ length: 5 }, (_, index) =>
+      layoutPerson(`deep-parent-${index + 1}`, `${1620 + index * 30}`),
+    )
+    const document: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        layoutPerson('root', '1595'),
+        layoutPerson('spouse-parent', '1770'),
+        layoutPerson('independent-parent', '1797'),
+        layoutPerson('magdalena', '1823'),
+        layoutPerson('spouse', '1800', 'man'),
+        ...deepBranch,
+        layoutPerson('finn', '2025'),
+      ],
+      relationships: [
+        parentChild('root-spouse-parent', 'root', 'spouse-parent'),
+        parentChild('spouse-parent-spouse', 'spouse-parent', 'spouse'),
+        parentChild('independent-parent-magdalena', 'independent-parent', 'magdalena'),
+        {
+          id: 'spouse-marriage',
+          type: 'marriage',
+          fromId: 'magdalena',
+          toId: 'spouse',
+          status: 'explicit',
+          sourceUrl: null,
+        },
+        parentChild('root-deep-parent-1', 'root', 'deep-parent-1'),
+        ...deepBranch.slice(1).map((person, index) =>
+          parentChild(
+            `deep-parent-${index + 1}-${index + 2}`,
+            `deep-parent-${index + 1}`,
+            person.id,
+          ),
+        ),
+        parentChild('deep-parent-5-finn', 'deep-parent-5', 'finn'),
+      ],
+    }
+
+    const projection = projectFamilyTree(document)
+    const y = (id: string) => projection.nodes.find((node) => node.id === id)?.position.y
+
+    expect(y('magdalena')).toBeLessThan(y('finn') ?? 0)
+  })
+
   it('uses the longest path when a DAG reaches a descendant through multiple branches', () => {
     const document: FamilyTreeDocument = {
       schemaVersion: 1,
@@ -447,7 +515,7 @@ describe('family tree graph projection', () => {
     expect(spouseY - (y('short-parent') ?? 0)).toBeGreaterThan(132)
   })
 
-  it('keeps direct parents adjacent when a spouse has a deeper ancestry', () => {
+  it('keeps a marriage group on its relational layer when a spouse has deeper ancestry', () => {
     const document: FamilyTreeDocument = {
       schemaVersion: 1,
       persons: [
@@ -485,6 +553,7 @@ describe('family tree graph projection', () => {
     const y = (id: string) => projection.nodes.find((node) => node.id === id)?.position.y
 
     expect(y('maria-parent-a')).toBe(y('maria-parent-b'))
+    expect(y('maria-schelling')).toBe(y('maria-spouse'))
     expect((y('maria-schelling') ?? 0) - (y('maria-parent-a') ?? 0)).toBe(132)
   })
 

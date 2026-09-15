@@ -648,6 +648,16 @@ button {
   padding-top: 10px;
 }
 
+.form-hint {
+  margin: 8px 0 0;
+  padding: 6px 7px;
+  border-left: 3px solid var(--coral);
+  background: rgba(245, 226, 217, 0.46);
+  color: var(--coral-dark);
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
 .relationship-endpoints {
   display: flex;
   align-items: center;

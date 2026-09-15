@@ -7,6 +7,8 @@ interface PersonInspectorProps {
   initialDraft?: PersonDraft | null
   onSave: (draft: PersonDraft) => DomainError | null | undefined
   onCancel: () => void
+  onMerge?: () => void
+  mergeMode?: boolean
 }
 
 interface PersonFormValues {
@@ -29,7 +31,14 @@ const valuesFromPerson = (person: Pick<PersonDraft, 'firstName' | 'lastName' | '
 
 const dateFromValue = (value: string): string | null => value.trim() || null
 
-function PersonInspector({ person, initialDraft = null, onSave, onCancel }: PersonInspectorProps) {
+function PersonInspector({
+  person,
+  initialDraft = null,
+  onSave,
+  onCancel,
+  onMerge,
+  mergeMode = false,
+}: PersonInspectorProps) {
   const [values, setValues] = useState(() => valuesFromPerson(person ?? initialDraft))
   const [error, setError] = useState<DomainError | null>(null)
 
@@ -77,6 +86,12 @@ function PersonInspector({ person, initialDraft = null, onSave, onCancel }: Pers
         </div>
         <span className="form-badge">Pflichtfelder *</span>
       </div>
+
+      {mergeMode && (
+        <p className="form-hint" role="status">
+          Wähle die zweite Person für die Fusion aus.
+        </p>
+      )}
 
       <div className="form-fields">
         <label className="form-field">
@@ -161,6 +176,16 @@ function PersonInspector({ person, initialDraft = null, onSave, onCancel }: Pers
       {error && !error.field && <p className="form-error" role="alert">{error.message}</p>}
 
       <div className="form-actions">
+        {person && onMerge && !mergeMode && (
+          <button
+            aria-label="Mit anderer Person fusionieren"
+            className="danger-action"
+            type="button"
+            onClick={onMerge}
+          >
+            Fusionieren
+          </button>
+        )}
         <button className="secondary-action" type="button" onClick={onCancel}>
           Verwerfen
         </button>
