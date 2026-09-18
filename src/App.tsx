@@ -24,9 +24,17 @@ import type {
   Position,
   Relationship,
 } from './domain/types'
-import { projectFamilyTree, type GraphSelection } from './graph/graph-projection'
+import {
+  findCollapsibleChildGroup,
+  findCommonChildren,
+  getPersonGenerations,
+  projectFamilyTree,
+  type ChildGroup,
+  type GraphSelection,
+} from './graph/graph-projection'
 import {
   filterFamilyTreeDocument,
+  findDuplicatePersonPairs,
   findPersonSearchMatches,
   type GraphViewOptions,
 } from './graph/graph-view'
@@ -35,10 +43,14 @@ import {
   type RelationshipConnectionDraft,
 } from './graph/relationship-connection'
 import PersonNode from './components/PersonNode'
+import ChildGroupNode from './components/ChildGroupNode'
+import DuplicatePairsPanel from './components/DuplicatePairsPanel'
+import ForceTreeView from './components/ForceTreeView'
 import PersonInspector from './components/PersonInspector'
 import RelationshipInspector, {
   type RelationshipFormDraft,
 } from './components/RelationshipInspector'
+import ChildGroupInspector from './components/ChildGroupInspector'
 import OcrSuggestionsPanel, {
   type OcrImportViewState,
 } from './components/OcrSuggestionsPanel'
@@ -58,10 +70,11 @@ import {
 
 import '@xyflow/react/dist/style.css'
 
-const nodeTypes = { person: PersonNode }
+const nodeTypes = { person: PersonNode, 'child-group': ChildGroupNode }
 const proOptions = { hideAttribution: true }
 
 type ConnectionDraft = RelationshipConnectionDraft
+type ViewMode = 'overview' | 'force'
 
 const createEmptyOcrImportState = (): OcrImportViewState => ({
   status: 'idle',
@@ -159,6 +172,7 @@ function FocusPersonOnRequest({ personId, request }: FocusPersonOnRequestProps) 
 function App() {
   const [document, setDocument] = useState<FamilyTreeDocument>(createEmptyDocument)
   const [selection, setSelection] = useState<GraphSelection>(undefined)
+  const [activeChildGroups, setActiveChildGroups] = useState<ChildGroup[]>([])
   const [mergeSourceId, setMergeSourceId] = useState<string | null>(null)
   const [isCreatingPerson, setIsCreatingPerson] = useState(false)
   const [connectionDraft, setConnectionDraft] = useState<ConnectionDraft | null>(null)
@@ -170,6 +184,10 @@ function App() {
   const [temporaryPositions, setTemporaryPositions] = useState<Map<string, Position>>(
     () => new Map(),
   )
+  const [forcePositions, setForcePositions] = useState<Map<string, Position>>(
+    () => new Map(),
+  )
+  const [viewMode, setViewMode] = useState<ViewMode>('overview')
   const [fitViewRequest, setFitViewRequest] = useState(0)
   const [personToCenter, setPersonToCenter] = useState<string | null>(null)
   const [focusPersonId, setFocusPersonId] = useState<string | null>(null)
@@ -213,10 +231,37 @@ function App() {
     () => findPersonSearchMatches(visibleDocument, searchQuery),
     [searchQuery, visibleDocument],
   )
-  const projection = useMemo(
-    () => projectFamilyTree(document, selection, temporaryPositions, viewOptions),
-    [document, selection, temporaryPositions, viewOptions],
+  const personGenerations = useMemo(
+    () => getPersonGenerations(document),
+    [document],
   )
+  const duplicatePairs = useMemo(
+    () => findDuplicatePersonPairs(document, personGenerations),
+    [document, personGenerations],
+  )
+  const projection = useMemo(
+    () => projectFamilyTree(
+      document,
+      selection,
+      temporaryPositions,
+      viewOptions,
+      activeChildGroups,
+    ),
+    [activeChildGroups, document, selection, temporaryPositions, viewOptions],
+  )
+  const visibleProjectionIds = useMemo(
+    () => new Set(projection.nodes.map((node) => node.id)),
+    [projection.nodes],
+  )
+
+  useEffect(() => {
+    setForcePositions((current) => {
+      const next = new Map(
+        [...current].filter(([nodeId]) => visibleProjectionIds.has(nodeId)),
+      )
+      return next.size === current.size ? current : next
+    })
+  }, [visibleProjectionIds])
   const selectedPerson =
     selection?.type === 'person'
       ? document.persons.find((person) => person.id === selection.id) ?? null
@@ -228,6 +273,23 @@ function App() {
     selection?.type === 'relationship'
       ? document.relationships.find((relationship) => relationship.id === selection.id) ?? null
       : null
+  const selectedChildGroup =
+    selection?.type === 'child-group'
+      ? activeChildGroups.find((group) => group.id === selection.id) ?? null
+      : null
+  const selectedMarriage = selectedRelationship?.type === 'marriage'
+    ? selectedRelationship
+    : null
+  const commonChildIds = selectedMarriage
+    ? findCommonChildren(document, selectedMarriage.id)
+    : []
+  const commonChildren = commonChildIds
+    .map((personId) => document.persons.find((person) => person.id === personId))
+    .filter((person): person is FamilyTreeDocument['persons'][number] => Boolean(person))
+  const collapsibleChildGroup = selectedMarriage &&
+    !activeChildGroups.some((group) => group.marriageId === selectedMarriage.id)
+    ? findCollapsibleChildGroup(document, selectedMarriage.id, activeChildGroups)
+    : null
   const inspectorRelationship = selectedRelationship ?? null
   const inspectorConnection = connectionDraft ?? (
     selectedRelationship
@@ -246,13 +308,15 @@ function App() {
       ? visibleDocument.persons.some((person) => person.id === selection.id)
       : selection?.type === 'relationship'
         ? visibleDocument.relationships.some((relationship) => relationship.id === selection.id)
-        : true
+        : selection?.type === 'child-group'
+          ? projection.nodes.some((node) => node.id === selection.id)
+          : true
 
     if (!selectedObjectIsVisible) {
       setSelection(undefined)
       setConnectionDraft(null)
     }
-  }, [selection, visibleDocument])
+  }, [projection.nodes, selection, visibleDocument])
 
   useEffect(() => {
     searchCursorRef.current = -1
@@ -263,6 +327,34 @@ function App() {
       searchCursorRef.current = -1
     }
   }, [searchMatches.length])
+
+  const handleCollapseChildren = () => {
+    if (!collapsibleChildGroup) return
+
+    setActiveChildGroups((current) =>
+      current.some((group) => group.id === collapsibleChildGroup.id)
+        ? current
+        : [...current, collapsibleChildGroup],
+    )
+    setSelection({ type: 'child-group', id: collapsibleChildGroup.id })
+    setConnectionDraft(null)
+    setWorkflowError(null)
+  }
+
+  const handleExpandChildGroup = () => {
+    if (!selectedChildGroup) return
+
+    setActiveChildGroups((current) =>
+      current.filter((group) => group.id !== selectedChildGroup.id),
+    )
+    setTemporaryPositions((current) => {
+      const next = new Map(current)
+      next.delete(selectedChildGroup.id)
+      return next
+    })
+    setSelection({ type: 'relationship', id: selectedChildGroup.marriageId })
+    setWorkflowError(null)
+  }
 
   const handleMergeStart = () => {
     if (!selectedPerson) {
@@ -310,7 +402,9 @@ function App() {
     }
 
     setDocument(result.value)
+    setActiveChildGroups([])
     setTemporaryPositions(new Map())
+    setForcePositions(new Map())
     setFitViewRequest((current) => current + 1)
     setPersonToCenter(null)
     setFocusPersonId(null)
@@ -324,14 +418,41 @@ function App() {
     setSelection({ type: 'person', id: mergeSourceId })
   }
 
-  const handlePersonNavigation = (personId: string) => {
+  const handlePersonNavigation = (
+    personId: string,
+    options: { resetViewFilters?: boolean; bypassMerge?: boolean } = {},
+  ) => {
     if (!document.persons.some((person) => person.id === personId)) {
       return
     }
 
-    if (mergeSourceId) {
+    if (mergeSourceId && !options.bypassMerge) {
       handleMergeCandidate(personId)
       return
+    }
+
+    if (options.bypassMerge) {
+      setMergeSourceId(null)
+    }
+
+    if (options.resetViewFilters) {
+      setIsLocalView(false)
+      setLocalAnchorId(null)
+      setLocalDistance(1)
+      setBloodOnly(false)
+      setHideLeaves(false)
+    }
+
+    const containingGroup = activeChildGroups.find((group) => group.childIds.includes(personId))
+    if (containingGroup) {
+      setActiveChildGroups((current) =>
+        current.filter((group) => group.id !== containingGroup.id),
+      )
+      setTemporaryPositions((current) => {
+        const next = new Map(current)
+        next.delete(containingGroup.id)
+        return next
+      })
     }
 
     setPendingOcrSuggestion(null)
@@ -342,6 +463,10 @@ function App() {
     setSelection({ type: 'person', id: personId })
     setFocusPersonId(personId)
     setFocusRequest((current) => current + 1)
+  }
+
+  const handleDuplicatePersonNavigation = (personId: string) => {
+    handlePersonNavigation(personId, { resetViewFilters: true, bypassMerge: true })
   }
 
   const handleSearchNavigation = (direction: -1 | 1) => {
@@ -366,6 +491,24 @@ function App() {
     setIsLocalView(enabled)
     setLocalAnchorId(enabled && selection?.type === 'person' ? selection.id : null)
   }
+
+  const handleViewModeChange = (nextMode: ViewMode) => {
+    setViewMode(nextMode)
+    if (nextMode === 'force') {
+      setPendingOcrSuggestion(null)
+      setMergeSourceId(null)
+      setIsCreatingPerson(false)
+      setConnectionDraft(null)
+    }
+  }
+
+  const handleForcePositionChange = useCallback((nodeId: string, position: Position) => {
+    setForcePositions((current) => {
+      const next = new Map(current)
+      next.set(nodeId, position)
+      return next
+    })
+  }, [])
 
   const resetViewState = () => {
     setFocusPersonId(null)
@@ -427,9 +570,11 @@ function App() {
     )
 
     setDocument(nextDocument)
+    setActiveChildGroups([])
     setOcrSuggestions((current) => rejectOcrSuggestion(current, suggestion.id))
     setPendingOcrSuggestion(null)
     setTemporaryPositions(new Map())
+    setForcePositions(new Map())
     setFitViewRequest((current) => current + 1)
     setIsDirty(true)
     setSaveState('Ungespeichert')
@@ -471,7 +616,9 @@ function App() {
       : new Map<string, Position>()
 
     setDocument(nextDocument)
+    setActiveChildGroups([])
     setTemporaryPositions(positionsToKeep)
+    setForcePositions(new Map())
     setPersonToCenter(isNewPerson ? savedPersonId ?? null : null)
     setIsDirty(true)
     setSaveState('Ungespeichert')
@@ -580,7 +727,9 @@ function App() {
       : new Map<string, Position>()
 
     setDocument(nextDocument)
+    setActiveChildGroups([])
     setTemporaryPositions(anchoredPositions)
+    setForcePositions(new Map())
     setIsDirty(true)
     setSaveState('Ungespeichert')
     setWorkflowError(null)
@@ -610,7 +759,9 @@ function App() {
     }
 
     setDocument(synchronizeInferredRelationships(result.value))
+    setActiveChildGroups([])
     setTemporaryPositions(new Map())
+    setForcePositions(new Map())
     setIsDirty(true)
     setSaveState('Ungespeichert')
     setSelection(undefined)
@@ -681,7 +832,7 @@ function App() {
     setWorkflowError(null)
   }
 
-  const visiblePersonCount = projection.nodes.length
+  const visiblePersonCount = projection.nodes.filter((node) => node.type === 'person').length
   const hasActiveViewFilters = isLocalView || bloodOnly || hideLeaves
 
   const clearTransientState = () => {
@@ -701,7 +852,9 @@ function App() {
     }
 
     setDocument(createEmptyDocument())
+    setActiveChildGroups([])
     setTemporaryPositions(new Map())
+    setForcePositions(new Map())
     clearTransientState()
     resetViewState()
     setIsDirty(false)
@@ -725,7 +878,9 @@ function App() {
       }
 
       setDocument(synchronizeInferredRelationships(result.value))
+      setActiveChildGroups([])
       setTemporaryPositions(new Map())
+      setForcePositions(new Map())
       setFitViewRequest((current) => current + 1)
       clearTransientState()
       resetViewState()
@@ -800,7 +955,9 @@ function App() {
         <section className="canvas-panel" aria-label="Stammbaum-Arbeitsfläche">
           <div className="canvas-heading">
             <div>
-              <p className="section-label">Übersicht</p>
+              <p className="section-label">
+                {viewMode === 'force' ? 'Federungsansicht' : 'Übersicht'}
+              </p>
               <p className="canvas-caption">
                 {document.persons.length === 0
                   ? 'Leer'
@@ -810,11 +967,34 @@ function App() {
               </p>
             </div>
             <div className="canvas-heading-actions">
+              <div className="view-mode-toggle" aria-label="Arbeitsflächenansicht">
+                <button
+                  aria-label="Übersicht"
+                  aria-pressed={viewMode === 'overview'}
+                  className={`toolbar-button${viewMode === 'overview' ? ' toolbar-button--active' : ''}`}
+                  title="Bearbeitbare Übersicht"
+                  type="button"
+                  onClick={() => handleViewModeChange('overview')}
+                >
+                  Bearbeitung
+                </button>
+                <button
+                  aria-label="Federungsansicht"
+                  aria-pressed={viewMode === 'force'}
+                  className={`toolbar-button${viewMode === 'force' ? ' toolbar-button--active' : ''}`}
+                  title="Schreibgeschützte Federungsansicht"
+                  type="button"
+                  onClick={() => handleViewModeChange('force')}
+                >
+                  Federung
+                </button>
+              </div>
               <button
                 aria-label="Person anlegen"
                 className="add-person-button"
                 title="Person anlegen"
                 type="button"
+                disabled={viewMode === 'force'}
                 onClick={() => {
                   setSelection(undefined)
                   setConnectionDraft(null)
@@ -914,7 +1094,24 @@ function App() {
               </label>
             </div>
           </div>
-          <div ref={flowSurfaceRef} className="flow-surface">
+          <DuplicatePairsPanel
+            pairs={duplicatePairs}
+            persons={document.persons}
+            onPersonClick={handleDuplicatePersonNavigation}
+          />
+          <div
+            ref={flowSurfaceRef}
+            className={`flow-surface${viewMode === 'force' ? ' flow-surface--force' : ''}`}
+          >
+            {viewMode === 'force' ? (
+              <ForceTreeView
+                projection={projection}
+                positionOverrides={forcePositions}
+                onManualPositionChange={handleForcePositionChange}
+                focusPersonId={focusPersonId}
+                focusRequest={focusRequest}
+              />
+            ) : (
             <ReactFlow
               nodes={projection.nodes}
               edges={projection.edges}
@@ -929,6 +1126,14 @@ function App() {
               panOnDrag
               onNodesChange={handleNodesChange}
               onNodeClick={(_event, node) => {
+                if (node.type === 'child-group') {
+                  setIsCreatingPerson(false)
+                  setMergeSourceId(null)
+                  setConnectionDraft(null)
+                  setSelection({ type: 'child-group', id: node.id })
+                  return
+                }
+
                 if (mergeSourceId) {
                   handleMergeCandidate(node.id)
                   return
@@ -969,6 +1174,7 @@ function App() {
               <Background color="#d9d0c2" gap={24} size={1} />
               <Controls showInteractive={false} position="bottom-left" />
             </ReactFlow>
+            )}
             {visiblePersonCount === 0 && (
               <div className="empty-canvas" aria-live="polite">
                 <div className="empty-canvas-icon" aria-hidden="true">
@@ -990,7 +1196,19 @@ function App() {
         </section>
 
         <aside className="inspector-panel" aria-label="Detailinspektor">
-          {isCreatingPerson || selection?.type === 'person' ? (
+          {viewMode === 'force' ? (
+            <div className="inspector-placeholder inspector-placeholder--readonly">
+              <span className="inspector-kicker">Federungsansicht</span>
+              <h2>Nur Ansicht</h2>
+              <p>Diese Ansicht ist schreibgeschützt.</p>
+              <p>Nodes können verschoben werden, Stammbaumdaten bleiben unverändert.</p>
+            </div>
+          ) : selectedChildGroup ? (
+            <ChildGroupInspector
+              group={selectedChildGroup}
+              onExpand={handleExpandChildGroup}
+            />
+          ) : isCreatingPerson || selection?.type === 'person' ? (
             <PersonInspector
               person={isCreatingPerson ? null : selectedPerson}
               initialDraft={pendingOcrSuggestion?.newPerson ?? null}
@@ -1005,6 +1223,9 @@ function App() {
               relationshipType={connectionDraft?.relationshipType}
               sourcePerson={sourcePerson}
               targetPerson={targetPerson}
+              commonChildren={commonChildren}
+              canCollapseChildren={Boolean(collapsibleChildGroup)}
+              onCollapseChildren={collapsibleChildGroup ? handleCollapseChildren : undefined}
               onSave={handleRelationshipSave}
               onCancel={handleRelationshipCancel}
               onRemove={handleRelationshipRemove}
@@ -1036,6 +1257,7 @@ function App() {
           onOpen={handleOcrSuggestionOpen}
           onReferencePersonClick={handlePersonNavigation}
           onReject={handleOcrSuggestionReject}
+          readOnly={viewMode === 'force'}
         />
       </div>
     </main>

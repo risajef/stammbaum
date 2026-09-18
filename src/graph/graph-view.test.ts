@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import type { FamilyTreeDocument, Gender, Person, Relationship } from '../domain/types'
-import { filterFamilyTreeDocument, findPersonSearchMatches } from './graph-view'
+import {
+  filterFamilyTreeDocument,
+  findDuplicatePersonPairs,
+  findPersonSearchMatches,
+} from './graph-view'
 
 const person = (
   id: string,
@@ -51,7 +55,93 @@ const document: FamilyTreeDocument = {
   ],
 }
 
+const namedPerson = (
+  id: string,
+  firstName: string,
+  lastName: string,
+  birthYear: string | null,
+): Person => ({
+  id,
+  firstName,
+  lastName,
+  gender: null,
+  birthYear,
+  deathYear: null,
+  position: null,
+})
+
 describe('family tree view projection', () => {
+  it('finds and ranks compatible same-name pairs using dates and layout generations', () => {
+    const duplicateDocument: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        namedPerson('full-a', ' Anna ', 'Weber', '1900-05-20'),
+        namedPerson('full-b', 'anna', 'weber', '1900-05-20'),
+        namedPerson('partial-a', 'Berta', 'Weber', '1910-05'),
+        namedPerson('partial-b', 'Berta', 'Weber', '1910-05-20'),
+        namedPerson('mixed-a', 'Clara', 'Weber', '1920-05-20'),
+        namedPerson('mixed-b', 'Clara', 'Weber', null),
+        namedPerson('missing-a', 'Dora', 'Weber', null),
+        namedPerson('missing-b', 'Dora', 'Weber', null),
+        namedPerson('far-missing', 'Dora', 'Weber', null),
+        namedPerson('incompatible-a', 'Elsa', 'Weber', '1930-05'),
+        namedPerson('incompatible-b', 'Elsa', 'Weber', '1930-06'),
+        namedPerson('umlaut', 'Müller', 'Test', null),
+        namedPerson('transliterated', 'Mueller', 'Test', null),
+      ],
+      relationships: [],
+    }
+
+    const generations = new Map([
+      ['mixed-a', 4],
+      ['mixed-b', 5],
+      ['missing-a', 6],
+      ['missing-b', 7],
+      ['far-missing', 9],
+    ])
+
+    expect(findDuplicatePersonPairs(duplicateDocument, generations)).toEqual([
+      { firstPersonId: 'full-a', secondPersonId: 'full-b', priority: 1 },
+      { firstPersonId: 'partial-a', secondPersonId: 'partial-b', priority: 2 },
+      { firstPersonId: 'mixed-a', secondPersonId: 'mixed-b', priority: 3 },
+      { firstPersonId: 'missing-a', secondPersonId: 'missing-b', priority: 4 },
+    ])
+  })
+
+  it('returns every pair for a same-name set in stable document order', () => {
+    const duplicateDocument: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        namedPerson('one', 'Friedrich', 'Schmidt', '1800-01-01'),
+        namedPerson('two', 'Friedrich', 'Schmidt', '1800-01-01'),
+        namedPerson('three', 'Friedrich', 'Schmidt', '1800-01-01'),
+      ],
+      relationships: [],
+    }
+
+    expect(findDuplicatePersonPairs(duplicateDocument, new Map())).toEqual([
+      { firstPersonId: 'one', secondPersonId: 'two', priority: 1 },
+      { firstPersonId: 'one', secondPersonId: 'three', priority: 1 },
+      { firstPersonId: 'two', secondPersonId: 'three', priority: 1 },
+    ])
+  })
+
+  it('excludes direct parent-child pairs even when their missing dates are generation-compatible', () => {
+    const directFamilyDocument: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        namedPerson('child', 'Anna', 'Weber', null),
+        namedPerson('parent', 'Anna', 'Weber', null),
+      ],
+      relationships: [relationship('parent-child', 'parent-child', 'parent', 'child')],
+    }
+
+    expect(findDuplicatePersonPairs(directFamilyDocument, new Map([
+      ['parent', 2],
+      ['child', 3],
+    ]))).toEqual([])
+  })
+
   it('orders visible name matches by known birth date and keeps unknown dates last', () => {
     const searchableDocument: FamilyTreeDocument = {
       ...document,

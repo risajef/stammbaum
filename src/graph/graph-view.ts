@@ -1,5 +1,13 @@
-import type { FamilyTreeDocument, Person, Relationship } from '../domain/types'
-import { comparePartialDates, parsePartialDate } from '../domain/life-date'
+import type { DateValue, FamilyTreeDocument, Person, Relationship } from '../domain/types'
+import { comparePartialDates, parsePartialDate, type PartialDateParts } from '../domain/life-date'
+
+export type DuplicatePriority = 1 | 2 | 3 | 4
+
+export interface DuplicatePersonPair {
+  firstPersonId: string
+  secondPersonId: string
+  priority: DuplicatePriority
+}
 
 export interface GraphViewOptions {
   anchorPersonId?: string | null
@@ -172,6 +180,127 @@ export const filterFamilyTreeDocument = (
 }
 
 const personName = (person: Person) => `${person.firstName} ${person.lastName}`
+
+const duplicateNameKey = (person: Person) => [person.firstName, person.lastName]
+  .map((value) => value.trim().toLocaleLowerCase('de-DE'))
+  .join('\u0000')
+
+const unorderedPersonPairKey = (firstPersonId: string, secondPersonId: string) =>
+  [firstPersonId, secondPersonId].sort().join('\u0000')
+
+type BirthDateState =
+  | { kind: 'missing' }
+  | { kind: 'invalid' }
+  | { kind: 'present'; parts: PartialDateParts }
+
+const birthDateState = (value: DateValue | null): BirthDateState => {
+  if (value === null || (typeof value === 'string' && value.trim() === '')) {
+    return { kind: 'missing' }
+  }
+
+  const parts = parsePartialDate(value)
+  return parts ? { kind: 'present', parts } : { kind: 'invalid' }
+}
+
+const compatibleKnownBirthDates = (
+  first: PartialDateParts,
+  second: PartialDateParts,
+) => {
+  for (const component of ['year', 'month', 'day'] as const) {
+    const firstValue = first[component]
+    const secondValue = second[component]
+    if (firstValue !== null && secondValue !== null && firstValue !== secondValue) {
+      return false
+    }
+  }
+
+  return true
+}
+
+const isCompleteBirthDate = (
+  date: PartialDateParts,
+) => date.month !== null && date.day !== null
+
+const duplicatePriority = (
+  first: Person,
+  second: Person,
+  generations: ReadonlyMap<string, number>,
+): DuplicatePriority | null => {
+  const firstBirthDate = birthDateState(first.birthYear)
+  const secondBirthDate = birthDateState(second.birthYear)
+
+  if (firstBirthDate.kind === 'invalid' || secondBirthDate.kind === 'invalid') {
+    return null
+  }
+
+  if (firstBirthDate.kind === 'present' && secondBirthDate.kind === 'present') {
+    if (!compatibleKnownBirthDates(firstBirthDate.parts, secondBirthDate.parts)) {
+      return null
+    }
+
+    return isCompleteBirthDate(firstBirthDate.parts) && isCompleteBirthDate(secondBirthDate.parts)
+      ? 1
+      : 2
+  }
+
+  const firstGeneration = generations.get(first.id)
+  const secondGeneration = generations.get(second.id)
+  if (
+    firstGeneration === undefined ||
+    secondGeneration === undefined ||
+    Math.abs(firstGeneration - secondGeneration) > 1
+  ) {
+    return null
+  }
+
+  return firstBirthDate.kind === 'missing' && secondBirthDate.kind === 'missing' ? 4 : 3
+}
+
+export const findDuplicatePersonPairs = (
+  document: FamilyTreeDocument,
+  generations: ReadonlyMap<string, number>,
+): DuplicatePersonPair[] => {
+  const personsByName = new Map<string, Person[]>()
+  const directParentChildPairs = new Set(
+    document.relationships
+      .filter(({ type }) => type === 'parent-child')
+      .map(({ fromId, toId }) => unorderedPersonPairKey(fromId, toId)),
+  )
+  document.persons.forEach((person) => {
+    const nameKey = duplicateNameKey(person)
+    const persons = personsByName.get(nameKey) ?? []
+    persons.push(person)
+    personsByName.set(nameKey, persons)
+  })
+
+  const personIndexes = new Map(document.persons.map((person, index) => [person.id, index]))
+  const pairs: DuplicatePersonPair[] = []
+  personsByName.forEach((persons) => {
+    for (let firstIndex = 0; firstIndex < persons.length - 1; firstIndex += 1) {
+      for (let secondIndex = firstIndex + 1; secondIndex < persons.length; secondIndex += 1) {
+        const first = persons[firstIndex]
+        const second = persons[secondIndex]
+        if (directParentChildPairs.has(unorderedPersonPairKey(first.id, second.id))) {
+          continue
+        }
+        const priority = duplicatePriority(first, second, generations)
+        if (priority === null) continue
+
+        pairs.push({
+          firstPersonId: first.id,
+          secondPersonId: second.id,
+          priority,
+        })
+      }
+    }
+  })
+
+  return pairs.sort((first, second) =>
+    first.priority - second.priority ||
+    (personIndexes.get(first.firstPersonId) ?? 0) - (personIndexes.get(second.firstPersonId) ?? 0) ||
+    (personIndexes.get(first.secondPersonId) ?? 0) - (personIndexes.get(second.secondPersonId) ?? 0),
+  )
+}
 
 export const findPersonSearchMatches = (
   document: FamilyTreeDocument,

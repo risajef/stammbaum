@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 import type {
   OcrImportIssue,
   OcrImportStats,
@@ -35,6 +37,7 @@ interface OcrSuggestionsPanelProps {
   onSearchPerson?: () => void
   onOpen?: (suggestion: OcrSuggestion) => void
   onReferencePersonClick?: (personId: string) => void
+  readOnly?: boolean
   /** Kept for callers that render the panel without suggestion actions. */
   onAccept?: (suggestion: OcrSuggestion) => void
   onReject: (suggestion: OcrSuggestion) => void
@@ -66,8 +69,10 @@ function OcrSuggestionsPanel({
   onSearchPerson,
   onOpen,
   onReferencePersonClick,
+  readOnly = false,
   onReject,
 }: OcrSuggestionsPanelProps) {
+  const [isExpanded, setIsExpanded] = useState(true)
   const summary = `${importState.runs.length} ${importState.runs.length === 1 ? 'Quelle' : 'Quellen'} · ${pageLabel(importState.pages.length)}`
   const backendStatus = importState.backendStatus ?? 'unknown'
   const backendLabel = backendStatus === 'connecting'
@@ -102,9 +107,19 @@ function OcrSuggestionsPanel({
           <p className="section-label">Quellenprüfung</p>
           <h2>OCR-Vorschläge</h2>
         </div>
+        <button
+          aria-controls="ocr-panel-content"
+          aria-expanded={isExpanded}
+          className="toolbar-button panel-toggle"
+          type="button"
+          onClick={() => setIsExpanded((current) => !current)}
+        >
+          {isExpanded ? 'OCR-Vorschläge ausblenden' : 'OCR-Vorschläge einblenden'}
+        </button>
       </div>
 
-      <div className="ocr-import-controls">
+      {isExpanded && <div className="ocr-panel-content" id="ocr-panel-content">
+        <div className="ocr-import-controls">
         <label htmlFor="ocr-path">OCR-Pfad (Linux)</label>
         <input
           id="ocr-path"
@@ -116,9 +131,9 @@ function OcrSuggestionsPanel({
         <button className="toolbar-button" type="button" onClick={onImport}>
           OCR-Pfad einlesen
         </button>
-      </div>
+        </div>
 
-      <div className="ocr-import-status" aria-live="polite">
+        <div className="ocr-import-status" aria-live="polite">
         {importState.status === 'loading' && 'OCR wird geladen…'}
         {importState.status === 'loaded' && (
           <>
@@ -133,26 +148,26 @@ function OcrSuggestionsPanel({
         <span className={`ocr-backend-status ocr-backend-status--${backendStatus}`}>
           {backendLabel}
         </span>
-      </div>
-
-      {importState.errors.length > 0 && (
-        <div className="ocr-import-errors" role="alert">
-          <p>{importIssueLabel(importState.errors.length)}</p>
         </div>
-      )}
 
-      {importState.runs.length > 0 && (
-        <div className="ocr-sources" aria-label="Geladene OCR-Quellen">
-          {importState.runs.map((run) => (
-            <div className="ocr-source" key={run.id}>
-              <strong>{run.label}</strong>
-              <span>{pageLabel(run.pageCount)}</span>
-            </div>
-          ))}
-        </div>
-      )}
+        {importState.errors.length > 0 && (
+          <div className="ocr-import-errors" role="alert">
+            <p>{importIssueLabel(importState.errors.length)}</p>
+          </div>
+        )}
 
-      <section className="ocr-person-search" aria-label="OCR-Personensuche">
+        {importState.runs.length > 0 && (
+          <div className="ocr-sources" aria-label="Geladene OCR-Quellen">
+            {importState.runs.map((run) => (
+              <div className="ocr-source" key={run.id}>
+                <strong>{run.label}</strong>
+                <span>{pageLabel(run.pageCount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <section className="ocr-person-search" aria-label="OCR-Personensuche">
         <div className="ocr-person-search-header">
           <div>
             <p className="section-label">Vorhandene Person</p>
@@ -217,9 +232,9 @@ function OcrSuggestionsPanel({
             })}
           </div>
         )}
-      </section>
+        </section>
 
-      <div className="ocr-suggestion-list" aria-label="Offene OCR-Vorschläge">
+        <div className="ocr-suggestion-list" aria-label="Offene OCR-Vorschläge">
         {suggestions.length === 0
           ? <p className="ocr-empty-state">Keine Vorschläge</p>
           : suggestions.map((suggestion) => {
@@ -285,6 +300,7 @@ function OcrSuggestionsPanel({
                     <button
                       className="secondary-action"
                       type="button"
+                      disabled={readOnly}
                       onClick={() => onReject(suggestion)}
                     >
                       Vorschlag ablehnen
@@ -292,6 +308,7 @@ function OcrSuggestionsPanel({
                     <button
                       className="primary-action"
                       type="button"
+                      disabled={readOnly}
                       onClick={() => onOpen?.(suggestion)}
                     >
                       Vorschlag bearbeiten
@@ -300,7 +317,8 @@ function OcrSuggestionsPanel({
                 </article>
               )
             })}
-      </div>
+        </div>
+      </div>}
     </section>
   )
 }

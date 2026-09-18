@@ -27,6 +27,9 @@ interface RelationshipInspectorProps {
   relationshipType?: RelationshipType
   sourcePerson: Person | null
   targetPerson: Person | null
+  commonChildren?: readonly Person[]
+  canCollapseChildren?: boolean
+  onCollapseChildren?: () => void
   onSave: (draft: RelationshipFormDraft) => DomainError | null
   onCancel: () => void
   onRemove?: () => void
@@ -48,6 +51,9 @@ function RelationshipInspector({
   relationshipType,
   sourcePerson,
   targetPerson,
+  commonChildren = [],
+  canCollapseChildren = true,
+  onCollapseChildren,
   onSave,
   onCancel,
   onRemove,
@@ -130,6 +136,23 @@ function RelationshipInspector({
       {relationship?.comment && (
         <p className="relationship-comment">{relationship.comment}</p>
       )}
+
+      {relationship?.type === 'marriage' &&
+        commonChildren.length >= 2 &&
+        canCollapseChildren &&
+        onCollapseChildren && (
+          <div className="relationship-group-actions">
+            <p className="form-hint">{commonChildren.length} gemeinsame Kinder</p>
+            <button
+              aria-label={`${commonChildren.length} gemeinsame Kinder einklappen`}
+              className="secondary-action"
+              type="button"
+              onClick={onCollapseChildren}
+            >
+              {commonChildren.length} gemeinsame Kinder einklappen
+            </button>
+          </div>
+        )}
 
       <div className="form-fields">
         <label className="form-field">

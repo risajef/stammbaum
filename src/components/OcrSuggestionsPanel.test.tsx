@@ -410,4 +410,28 @@ describe('OcrSuggestionsPanel', () => {
     })).toBeDisabled()
     expect(screen.getByText('Keine OCR-Seiten geladen.')).toBeVisible()
   })
+
+  it('can collapse and reopen the OCR content from its header', () => {
+    render(
+      <OcrSuggestionsPanel
+        importState={{ status: 'loaded', runs: [], pages: [], errors: [] }}
+        suggestions={[suggestion]}
+        persons={[knownPerson]}
+        ocrPath=""
+        onPathChange={vi.fn()}
+        onImport={vi.fn()}
+        onReject={vi.fn()}
+      />,
+    )
+
+    const panel = screen.getByRole('region', { name: 'OCR-Vorschläge' })
+    expect(within(panel).getByRole('article', { name: /Lina Weber/ })).toBeVisible()
+
+    fireEvent.click(within(panel).getByRole('button', { name: 'OCR-Vorschläge ausblenden' }))
+    expect(within(panel).queryByRole('article', { name: /Lina Weber/ })).not.toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: 'OCR-Vorschläge einblenden' })).toBeVisible()
+
+    fireEvent.click(within(panel).getByRole('button', { name: 'OCR-Vorschläge einblenden' }))
+    expect(within(panel).getByRole('article', { name: /Lina Weber/ })).toBeVisible()
+  })
 })

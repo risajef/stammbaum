@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { projectFamilyTree } from './graph-projection'
+import {
+  findCollapsibleChildGroup,
+  findCommonChildren,
+  getPersonGenerations,
+  projectFamilyTree,
+} from './graph-projection'
 import type { FamilyTreeDocument, Gender, Person } from '../domain/types'
 
 const layoutPerson = (
@@ -79,6 +84,208 @@ const documentFixture: FamilyTreeDocument = {
 }
 
 describe('family tree graph projection', () => {
+  it('finds unique direct children shared by both marriage partners, including inferred parenthood', () => {
+    const document: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        layoutPerson('mother', '1900', 'woman'),
+        layoutPerson('father', '1898', 'man'),
+        layoutPerson('child-a', '1920'),
+        layoutPerson('child-b', '1922'),
+        layoutPerson('mother-only', '1924'),
+      ],
+      relationships: [
+        {
+          id: 'marriage',
+          type: 'marriage',
+          fromId: 'mother',
+          toId: 'father',
+          status: 'explicit',
+          sourceUrl: null,
+        },
+        parentChild('mother-child-a', 'mother', 'child-a'),
+        {
+          ...parentChild('father-child-a-inferred', 'father', 'child-a'),
+          status: 'inferred' as const,
+          inferredFrom: {
+            rule: 'spouse-parent' as const,
+            sourceRelationshipId: 'mother-child-a',
+          },
+        },
+        parentChild('mother-child-a-duplicate', 'mother', 'child-a'),
+        parentChild('mother-child-b', 'mother', 'child-b'),
+        parentChild('father-child-b', 'father', 'child-b'),
+        parentChild('mother-only-link', 'mother', 'mother-only'),
+      ],
+    }
+
+    expect(findCommonChildren(document, 'marriage')).toEqual(['child-a', 'child-b'])
+    expect(findCommonChildren(document, 'marriage')).not.toContain('mother-only')
+  })
+
+  it('only returns a collapsible group when at least two unique shared children exist', () => {
+    const document: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        layoutPerson('mother', '1900', 'woman'),
+        layoutPerson('father', '1898', 'man'),
+        layoutPerson('only-child', '1920'),
+        layoutPerson('one-sided-child', '1922'),
+      ],
+      relationships: [
+        {
+          id: 'marriage',
+          type: 'marriage',
+          fromId: 'mother',
+          toId: 'father',
+          status: 'explicit',
+          sourceUrl: null,
+        },
+        parentChild('mother-only-child', 'mother', 'only-child'),
+        parentChild('father-only-child', 'father', 'only-child'),
+        parentChild('mother-one-sided-child', 'mother', 'one-sided-child'),
+      ],
+    }
+
+    expect(findCommonChildren(document, 'marriage')).toEqual(['only-child'])
+    expect(findCollapsibleChildGroup(document, 'marriage')).toBeNull()
+  })
+
+  it('projects a virtual child group and remaps external edges without mutating the document', () => {
+    const document: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        layoutPerson('mother', '1900', 'woman'),
+        layoutPerson('father', '1898', 'man'),
+        layoutPerson('child-a', '1920'),
+        layoutPerson('child-b', '1922'),
+        layoutPerson('ancestor', '1870'),
+        layoutPerson('child-spouse', '1921'),
+      ],
+      relationships: [
+        {
+          id: 'marriage',
+          type: 'marriage',
+          fromId: 'mother',
+          toId: 'father',
+          status: 'explicit',
+          sourceUrl: null,
+        },
+        parentChild('mother-child-a', 'mother', 'child-a'),
+        parentChild('father-child-a', 'father', 'child-a'),
+        parentChild('mother-child-b', 'mother', 'child-b'),
+        parentChild('father-child-b', 'father', 'child-b'),
+        parentChild('ancestor-child-a', 'ancestor', 'child-a'),
+        {
+          id: 'child-a-marriage',
+          type: 'marriage',
+          fromId: 'child-a',
+          toId: 'child-spouse',
+          status: 'explicit',
+          sourceUrl: null,
+        },
+        {
+          id: 'child-b-marriage',
+          type: 'marriage',
+          fromId: 'child-b',
+          toId: 'child-spouse',
+          status: 'explicit',
+          sourceUrl: null,
+        },
+        parentChild('child-a-child-b', 'child-a', 'child-b'),
+      ],
+    }
+    const originalDocument = structuredClone(document)
+    const group = {
+      id: 'children-group:marriage',
+      marriageId: 'marriage',
+      childIds: ['child-a', 'child-b'],
+    }
+
+    const projection = projectFamilyTree(
+      document,
+      { type: 'child-group', id: group.id },
+      new Map(),
+      {},
+      [group],
+    )
+    const groupNode = projection.nodes.find((node) => node.id === group.id)
+
+    expect(groupNode).toMatchObject({
+      id: group.id,
+      type: 'child-group',
+      selected: true,
+      data: {
+        groupId: group.id,
+        marriageId: 'marriage',
+        childIds: ['child-a', 'child-b'],
+        label: '2 Kinder',
+      },
+    })
+    expect(projection.nodes.map((node) => node.id)).not.toContain('child-a')
+    expect(projection.nodes.map((node) => node.id)).not.toContain('child-b')
+
+    expect(projection.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'ancestor-child-a',
+        source: 'ancestor',
+        target: group.id,
+        data: expect.objectContaining({ relationshipId: 'ancestor-child-a' }),
+      }),
+      expect.objectContaining({
+        id: 'child-a-marriage',
+        source: group.id,
+        target: 'child-spouse',
+        data: expect.objectContaining({ relationshipId: 'child-a-marriage' }),
+      }),
+      expect.objectContaining({
+        id: 'child-b-marriage',
+        source: group.id,
+        target: 'child-spouse',
+        data: expect.objectContaining({ relationshipId: 'child-b-marriage' }),
+      }),
+    ]))
+    expect(projection.edges.filter((edge) => edge.source === group.id && edge.target === 'child-spouse'))
+      .toHaveLength(2)
+    expect(projection.edges.find((edge) => edge.id === 'child-a-child-b')).toBeUndefined()
+    expect(document).toEqual(originalDocument)
+  })
+
+  it('marks all common children when their marriage is selected', () => {
+    const document: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        layoutPerson('mother', '1900', 'woman'),
+        layoutPerson('father', '1898', 'man'),
+        layoutPerson('shared-a', '1920'),
+        layoutPerson('shared-b', '1922'),
+        layoutPerson('one-sided', '1924'),
+      ],
+      relationships: [
+        {
+          id: 'marriage',
+          type: 'marriage',
+          fromId: 'mother',
+          toId: 'father',
+          status: 'explicit',
+          sourceUrl: null,
+        },
+        parentChild('mother-shared-a', 'mother', 'shared-a'),
+        parentChild('father-shared-a', 'father', 'shared-a'),
+        parentChild('mother-shared-b', 'mother', 'shared-b'),
+        parentChild('father-shared-b', 'father', 'shared-b'),
+        parentChild('mother-one-sided', 'mother', 'one-sided'),
+      ],
+    }
+
+    const projection = projectFamilyTree(document, { type: 'relationship', id: 'marriage' })
+    const dataFor = (id: string) => projection.nodes.find((node) => node.id === id)?.data
+
+    expect(dataFor('shared-a')).toMatchObject({ isCommonChild: true })
+    expect(dataFor('shared-b')).toMatchObject({ isCommonChild: true })
+    expect(dataFor('one-sided')).toMatchObject({ isCommonChild: false })
+  })
+
   it('projects person details and uses automatic positions', () => {
     const projection = projectFamilyTree(documentFixture, { type: 'person', id: 'woman-1' })
 
@@ -112,6 +319,71 @@ describe('family tree graph projection', () => {
     )
   })
 
+  it('classifies people who died before 18 as minors and treats unknown ages as adults', () => {
+    const document: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        {
+          id: 'minor-woman',
+          firstName: 'Mina',
+          lastName: 'Test',
+          gender: 'woman',
+          birthYear: '1900-05',
+          deathYear: '1917-06',
+          position: null,
+        },
+        {
+          id: 'eighteen-man',
+          firstName: 'Emil',
+          lastName: 'Test',
+          gender: 'man',
+          birthYear: '1900',
+          deathYear: '1918',
+          position: null,
+        },
+        {
+          id: 'missing-death-woman',
+          firstName: 'Dora',
+          lastName: 'Test',
+          gender: 'woman',
+          birthYear: '1900',
+          deathYear: null,
+          position: null,
+        },
+        {
+          id: 'missing-birth-man',
+          firstName: 'Bruno',
+          lastName: 'Test',
+          gender: 'man',
+          birthYear: null,
+          deathYear: '1910',
+          position: null,
+        },
+        {
+          id: 'invalid-date-woman',
+          firstName: 'Iris',
+          lastName: 'Test',
+          gender: 'woman',
+          birthYear: 'unknown',
+          deathYear: '1910',
+          position: null,
+        },
+      ],
+      relationships: [],
+    }
+    const originalDocument = structuredClone(document)
+
+    const projection = projectFamilyTree(document)
+    const dataFor = (id: string) => projection.nodes.find((node) => node.id === id)?.data
+
+    expect(dataFor('minor-woman')).toMatchObject({ isMinor: true })
+    expect(dataFor('eighteen-man')).toMatchObject({ isMinor: false })
+    expect(dataFor('missing-death-woman')).toMatchObject({ isMinor: false })
+    expect(dataFor('missing-birth-man')).toMatchObject({ isMinor: false })
+    expect(dataFor('invalid-date-woman')).toMatchObject({ isMinor: false })
+    expect(document).toEqual(originalDocument)
+  })
+
   it('assigns deterministic generation positions to family components', () => {
     const first = projectFamilyTree(documentFixture)
     const second = projectFamilyTree(documentFixture)
@@ -123,6 +395,13 @@ describe('family tree graph projection', () => {
     expect(first.nodes.find((node) => node.id === 'child-1')?.position.y).toBeGreaterThan(
       first.nodes.find((node) => node.id === 'man-1')?.position.y ?? 0,
     )
+  })
+
+  it('exposes the semantic generations used by the layout', () => {
+    const generations = getPersonGenerations(documentFixture)
+
+    expect(generations.get('woman-1')).toBe(generations.get('man-1'))
+    expect(generations.get('child-1')).toBe((generations.get('man-1') ?? 0) + 1)
   })
 
   it('anchors layers at the oldest known person and keeps parents and spouses on adjacent lines', () => {

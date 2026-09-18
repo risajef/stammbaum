@@ -57,7 +57,6 @@ button {
 
 .brand-lockup,
 .topbar-actions,
-.person-node-header,
 .canvas-status {
   display: flex;
   align-items: center;
@@ -169,6 +168,23 @@ button {
   background: var(--coral-dark);
 }
 
+.toolbar-button--active {
+  border-color: var(--teal);
+  background: var(--teal);
+  color: #fffdf8;
+}
+
+.toolbar-button--active:hover {
+  border-color: var(--teal-deep);
+  background: var(--teal-deep);
+}
+
+.add-person-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  transform: none;
+}
+
 .save-state {
   margin-left: 4px;
   color: var(--muted-ink);
@@ -224,6 +240,11 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.view-mode-toggle {
+  display: flex;
+  gap: 3px;
 }
 
 .canvas-panel {
@@ -390,6 +411,102 @@ button {
   accent-color: var(--coral);
 }
 
+.duplicate-panel {
+  display: grid;
+  gap: 7px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(56, 91, 89, 0.12);
+  background: rgba(247, 243, 236, 0.24);
+}
+
+.duplicate-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.duplicate-panel-content {
+  display: grid;
+  gap: 7px;
+}
+
+.panel-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.panel-toggle {
+  padding: 4px 6px;
+  font-size: 0.62rem;
+}
+
+.duplicate-panel-header h2 {
+  margin: 3px 0 0;
+  color: var(--teal-deep);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.95rem;
+}
+
+.duplicate-panel-empty {
+  margin: 0;
+  color: var(--muted-ink);
+  font-size: 0.72rem;
+}
+
+.duplicate-pair-list {
+  display: grid;
+  gap: 5px;
+  max-height: 156px;
+  margin: 0;
+  padding: 0 0 0 22px;
+  overflow: auto;
+}
+
+.duplicate-pair {
+  display: grid;
+  gap: 3px;
+  padding: 4px 6px;
+  border: 1px solid rgba(56, 91, 89, 0.14);
+  background: rgba(255, 255, 255, 0.38);
+}
+
+.duplicate-pair-priority {
+  color: var(--muted-ink);
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.duplicate-pair-people {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.duplicate-person-button {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--teal-deep);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: rgba(198, 101, 76, 0.58);
+  text-underline-offset: 2px;
+}
+
+.duplicate-person-button:hover,
+.duplicate-person-button:focus-visible {
+  color: var(--coral);
+}
+
 .status-dot {
   width: 7px;
   height: 7px;
@@ -402,6 +519,24 @@ button {
   position: relative;
   flex: 1;
   min-height: 420px;
+}
+
+.force-tree-view {
+  width: 100%;
+  height: 100%;
+}
+
+.flow-surface--force .react-flow__handle {
+  pointer-events: none;
+  opacity: 0;
+}
+
+.flow-surface--force .react-flow__node {
+  cursor: grab;
+}
+
+.flow-surface--force .react-flow__node.dragging {
+  cursor: grabbing;
 }
 
 .react-flow {
@@ -524,19 +659,70 @@ button {
   position: relative;
   width: 148px;
   min-height: 88px;
-  padding: 8px 9px 9px;
+  padding: 6px 8px 7px;
+  --person-accent: var(--teal);
+  --person-name: var(--teal-deep);
+  --person-surface: #fffdf8;
   border: 1px solid rgba(56, 91, 89, 0.22);
-  border-top: 3px solid var(--teal);
+  border-top: 3px solid var(--person-accent);
   border-radius: 0;
-  background: #fffdf8;
+  background: var(--person-surface);
   box-shadow: 0 8px 20px rgba(53, 48, 39, 0.1);
   color: var(--ink);
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
+.person-node--woman {
+  --person-accent: var(--coral);
+  --person-name: var(--coral-dark);
+  --person-surface: #f5e2d9;
+}
+
+.person-node--man {
+  --person-accent: var(--teal);
+  --person-name: var(--teal-deep);
+  --person-surface: #e7efea;
+}
+
+.person-node--unknown {
+  --person-accent: #89918d;
+  --person-name: var(--ink);
+  --person-surface: #fffdf8;
+}
+
+.person-node--minor.person-node--woman {
+  --person-accent: #df947d;
+  --person-name: #b56956;
+  --person-surface: #fff4ef;
+}
+
+.person-node--minor.person-node--man {
+  --person-accent: #78a39a;
+  --person-name: #416e69;
+  --person-surface: #f3f8f5;
+}
+
+.person-node--common-child {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+}
+
+.person-node--common-child::after {
+  position: absolute;
+  right: 7px;
+  bottom: 5px;
+  color: #80601c;
+  content: 'Gemeinsames Kind';
+  font-size: 0.52rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .person-node:hover,
 .person-node--selected {
   border-color: var(--coral);
+  border-top-color: var(--person-accent);
   box-shadow: 0 12px 24px rgba(166, 77, 57, 0.18);
 }
 
@@ -544,43 +730,22 @@ button {
   transform: translateY(-2px);
 }
 
-.person-node-header {
-  justify-content: space-between;
-  margin-bottom: 4px;
-}
-
-.person-node-glyph {
-  display: grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #e7efea;
-  color: var(--teal);
-  font-size: 0.62rem;
-  font-weight: 800;
-}
-
-.person-node-gender {
-  color: var(--muted-ink);
-  font-size: 0.58rem;
-}
-
-.person-node strong {
+.person-node-name {
   display: block;
   max-width: 125px;
   overflow: hidden;
-  color: var(--teal-deep);
+  color: var(--person-name);
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 0.9rem;
   font-weight: 600;
+  line-height: 1.1;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: pre-line;
 }
 
 .person-node-years {
   display: block;
-  margin-top: 3px;
+  margin-top: 2px;
   color: var(--muted-ink);
   font-size: 0.64rem;
 }
@@ -594,6 +759,55 @@ button {
 }
 
 .person-handle--marriage {
+  background: var(--coral);
+}
+
+.child-group-node {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 148px;
+  min-height: 72px;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid rgba(128, 96, 28, 0.35);
+  border-top: 3px solid var(--gold);
+  border-radius: 0;
+  background: #f4ead0;
+  color: var(--teal-deep);
+  box-shadow: 0 8px 20px rgba(53, 48, 39, 0.1);
+  text-align: center;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.child-group-node--selected,
+.child-group-node:hover {
+  border-color: var(--coral);
+  border-top-color: var(--gold);
+  box-shadow: 0 12px 24px rgba(166, 77, 57, 0.18);
+}
+
+.child-group-node--selected {
+  transform: translateY(-2px);
+}
+
+.child-group-node-caption {
+  color: #80601c;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.child-group-handle {
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fffdf8;
+  background: var(--gold);
+}
+
+.child-group-handle--marriage {
   background: var(--coral);
 }
 
@@ -611,6 +825,13 @@ button {
 }
 
 .relationship-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  max-width: 200px;
+}
+
+.child-group-inspector {
   display: flex;
   flex-direction: column;
   min-height: 100%;
@@ -682,6 +903,25 @@ button {
   flex: 0 0 auto;
   color: var(--coral-dark);
   font-weight: 800;
+}
+
+.relationship-group-actions {
+  display: grid;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 7px;
+  border: 1px solid rgba(199, 155, 75, 0.28);
+  background: rgba(244, 234, 208, 0.48);
+}
+
+.relationship-group-actions .form-hint {
+  margin: 0;
+}
+
+.relationship-group-actions .secondary-action {
+  width: 100%;
+  line-height: 1.35;
+  text-align: left;
 }
 
 .relationship-status {
@@ -852,6 +1092,13 @@ button {
   background: rgba(245, 226, 217, 0.7);
 }
 
+.secondary-action:disabled,
+.primary-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+}
+
 .inspector-placeholder--empty {
   display: flex;
   flex-direction: column;
@@ -865,6 +1112,14 @@ button {
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 1.25rem;
   font-weight: 600;
+}
+
+.inspector-placeholder--readonly {
+  color: var(--muted-ink);
+}
+
+.inspector-placeholder--readonly h2 {
+  color: var(--teal-deep);
 }
 
 .inspector-placeholder p {
@@ -1301,6 +1556,15 @@ button {
 
   .canvas-panel {
     min-height: 400px;
+  }
+
+  .canvas-heading-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .view-mode-toggle .toolbar-button {
+    flex: 1 1 auto;
   }
 
   .view-toolbar {

@@ -166,4 +166,51 @@ describe('RelationshipInspector', () => {
       }),
     )
   })
+
+  it('offers collapsing when a marriage has at least two common children', () => {
+    const onCollapseChildren = vi.fn()
+    const commonChildren = [
+      { ...sourcePerson, id: 'child-a', firstName: 'Lina' },
+      { ...targetPerson, id: 'child-b', firstName: 'Mia' },
+    ]
+
+    render(
+      <RelationshipInspector
+        relationship={marriage}
+        sourcePerson={sourcePerson}
+        targetPerson={{ ...targetPerson, gender: 'man' }}
+        commonChildren={commonChildren}
+        onCollapseChildren={onCollapseChildren}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '2 gemeinsame Kinder einklappen' }))
+
+    expect(onCollapseChildren).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ['one child', [{ ...sourcePerson, id: 'child-a' }]],
+    ['an overlapping group', [
+      { ...sourcePerson, id: 'child-a' },
+      { ...targetPerson, id: 'child-b' },
+    ]],
+  ])('does not offer collapsing for %s', (_caseName, commonChildren) => {
+    render(
+      <RelationshipInspector
+        relationship={marriage}
+        sourcePerson={sourcePerson}
+        targetPerson={{ ...targetPerson, gender: 'man' }}
+        commonChildren={commonChildren}
+        canCollapseChildren={_caseName === 'one child'}
+        onCollapseChildren={vi.fn()}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /gemeinsame Kinder einklappen/ })).toBeNull()
+  })
 })

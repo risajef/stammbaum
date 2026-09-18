@@ -6,11 +6,24 @@ import { relationshipHandleIds } from '../graph/relationship-connection'
 type PersonGraphNode = Node<PersonNodeData, 'person'>
 
 function PersonNode({ data, selected }: NodeProps<PersonGraphNode>) {
-  const genderLabel = data.gender === 'woman' ? 'Frau' : data.gender === 'man' ? 'Mann' : 'Nicht angegeben'
   const isSelected = selected || data.selected
+  const genderClass = data.gender === 'woman'
+    ? 'person-node--woman'
+    : data.gender === 'man'
+      ? 'person-node--man'
+      : 'person-node--unknown'
+  const isMinor = data.isMinor && data.gender !== null
+  const nodeClasses = [
+    'person-node',
+    'nopan',
+    genderClass,
+    isMinor ? 'person-node--minor' : '',
+    data.isCommonChild ? 'person-node--common-child' : '',
+    isSelected ? 'person-node--selected' : '',
+  ].filter(Boolean).join(' ')
 
   return (
-    <div className={`person-node nopan${isSelected ? ' person-node--selected' : ''}`}>
+    <div className={nodeClasses}>
       <Handle
         className="person-handle"
         type="target"
@@ -35,13 +48,7 @@ function PersonNode({ data, selected }: NodeProps<PersonGraphNode>) {
           id={relationshipHandleIds.marriageSide}
         />
       )}
-      <div className="person-node-header">
-        <span className="person-node-glyph" aria-hidden="true">
-          {data.gender === 'woman' ? 'W' : data.gender === 'man' ? 'M' : '?'}
-        </span>
-        <span className="person-node-gender">{genderLabel}</span>
-      </div>
-      <strong>{data.label}</strong>
+      <strong className="person-node-name">{`${data.firstName}\n${data.lastName}`}</strong>
       <span className="person-node-years">{data.years}</span>
       <Handle
         className="person-handle"

@@ -16,9 +16,21 @@ import { relationshipHandleIds } from './relationship-connection'
 
 export type PersonNodeData = Record<string, unknown> & {
   personId: string
+  firstName: string
+  lastName: string
   label: string
   years: string
   gender: Person['gender']
+  isMinor: boolean
+  isCommonChild: boolean
+  selected: boolean
+}
+
+export type ChildGroupNodeData = Record<string, unknown> & {
+  groupId: string
+  marriageId: string
+  childIds: string[]
+  label: string
   selected: boolean
 }
 
@@ -34,10 +46,101 @@ export type RelationshipEdgeData = Record<string, unknown> & {
 export type GraphSelection =
   | { type: 'person'; id: string }
   | { type: 'relationship'; id: string }
+  | { type: 'child-group'; id: string }
   | undefined
 
+export interface ChildGroup {
+  id: string
+  marriageId: string
+  childIds: string[]
+}
+
+const childGroupId = (marriageId: string) => `children-group:${marriageId}`
+
+export const findCommonChildren = (
+  document: FamilyTreeDocument,
+  marriageId: string,
+): string[] => {
+  const marriage = document.relationships.find(
+    (relationship) => relationship.id === marriageId && relationship.type === 'marriage',
+  )
+  if (!marriage) return []
+
+  const personIds = new Set(document.persons.map((person) => person.id))
+  const childrenByParent = new Map<string, Set<string>>()
+  for (const relationship of document.relationships) {
+    if (
+      relationship.type !== 'parent-child' ||
+      !personIds.has(relationship.fromId) ||
+      !personIds.has(relationship.toId)
+    ) {
+      continue
+    }
+
+    const children = childrenByParent.get(relationship.fromId) ?? new Set<string>()
+    children.add(relationship.toId)
+    childrenByParent.set(relationship.fromId, children)
+  }
+
+  const firstChildren = childrenByParent.get(marriage.fromId) ?? new Set<string>()
+  const secondChildren = childrenByParent.get(marriage.toId) ?? new Set<string>()
+  const commonChildren = new Set(
+    [...firstChildren].filter((childId) => secondChildren.has(childId)),
+  )
+
+  return document.persons
+    .map((person) => person.id)
+    .filter((personId) => commonChildren.has(personId))
+}
+
+export const findCollapsibleChildGroup = (
+  document: FamilyTreeDocument,
+  marriageId: string,
+  activeGroups: readonly ChildGroup[] = [],
+): ChildGroup | null => {
+  const childIds = findCommonChildren(document, marriageId)
+  if (childIds.length < 2) return null
+
+  const overlapsAnotherGroup = activeGroups.some(
+    (group) =>
+      group.marriageId !== marriageId &&
+      group.childIds.some((childId) => childIds.includes(childId)),
+  )
+  if (overlapsAnotherGroup) return null
+
+  return { id: childGroupId(marriageId), marriageId, childIds }
+}
+
+const sameIds = (first: readonly string[], second: readonly string[]) =>
+  first.length === second.length &&
+  first.every((personId) => second.includes(personId))
+
+const renderableChildGroups = (
+  document: FamilyTreeDocument,
+  visiblePersonIds: ReadonlySet<string>,
+  activeGroups: readonly ChildGroup[],
+) => {
+  const renderedGroups: ChildGroup[] = []
+  for (const group of activeGroups) {
+    if (
+      renderedGroups.some((renderedGroup) => renderedGroup.marriageId === group.marriageId) ||
+      group.childIds.length < 2 ||
+      new Set(group.childIds).size !== group.childIds.length ||
+      !group.childIds.every((childId) => visiblePersonIds.has(childId))
+    ) {
+      continue
+    }
+
+    const candidate = findCollapsibleChildGroup(document, group.marriageId, renderedGroups)
+    if (!candidate || !sameIds(candidate.childIds, group.childIds)) continue
+    renderedGroups.push({ ...group, childIds: [...group.childIds] })
+  }
+
+  return renderedGroups
+}
+
 export interface GraphProjection {
-  nodes: Node<PersonNodeData>[]
+  nodes: Array<Node<PersonNodeData> | Node<ChildGroupNodeData>>
   edges: Edge<RelationshipEdgeData>[]
   fitViewOptions: {
     padding: number
@@ -67,6 +170,17 @@ interface FamilyComponent {
   hasMarriage: boolean
 }
 
+interface LayoutPerson {
+  id: string
+  gender: Person['gender']
+  birthYear: Person['birthYear']
+}
+
+interface LayoutDocument {
+  persons: readonly LayoutPerson[]
+  relationships: readonly Relationship[]
+}
+
 interface FamilyComponentGraph {
   components: FamilyComponent[]
   componentByPerson: Map<string, string>
@@ -81,7 +195,7 @@ const componentWidth = (component: FamilyComponent) =>
 const genderOrder = (gender: Person['gender']) =>
   gender === 'man' ? 0 : gender === 'woman' ? 1 : 2
 
-const createFamilyComponents = (document: FamilyTreeDocument) => {
+const createFamilyComponents = (document: LayoutDocument) => {
   const roots = new Map<string, string>()
   const marriedPersonIds = new Set<string>()
 
@@ -167,7 +281,7 @@ const createFamilyComponents = (document: FamilyTreeDocument) => {
   return { components, componentByPerson }
 }
 
-const createFamilyComponentGraph = (document: FamilyTreeDocument): FamilyComponentGraph => {
+const createFamilyComponentGraph = (document: LayoutDocument): FamilyComponentGraph => {
   const { components, componentByPerson } = createFamilyComponents(document)
   const parentComponents = new Map<string, Set<string>>()
   const childrenByComponent = new Map<string, Set<string>>()
@@ -209,7 +323,7 @@ const compareKnownBirthDates = (first: PartialDateParts, second: PartialDatePart
 }
 
 const selectEarliestKnownBirthDate = (
-  persons: readonly Person[],
+  persons: readonly LayoutPerson[],
 ): PartialDateParts | undefined => {
   let earliestDate: PartialDateParts | undefined
 
@@ -266,7 +380,7 @@ const createWeakComponentGroups = (
 }
 
 const assignComponentLayers = (
-  document: FamilyTreeDocument,
+  document: LayoutDocument,
   graph: FamilyComponentGraph,
 ) => {
   const componentById = new Map(graph.components.map((component) => [component.id, component]))
@@ -397,6 +511,27 @@ const assignComponentLayers = (
   }
 }
 
+const createLayeredFamilyComponentGraph = (document: LayoutDocument) => {
+  const graph = createFamilyComponentGraph(document)
+  assignComponentLayers(document, graph)
+  return graph
+}
+
+export const getPersonGenerations = (
+  document: Pick<FamilyTreeDocument, 'persons' | 'relationships'>,
+): ReadonlyMap<string, number> => {
+  const graph = createLayeredFamilyComponentGraph(document)
+  const generations = new Map<string, number>()
+
+  graph.components.forEach((component) => {
+    component.memberIds.forEach((personId) => {
+      generations.set(personId, component.layer)
+    })
+  })
+
+  return generations
+}
+
 interface ComponentInterval {
   left: number
   right: number
@@ -408,16 +543,14 @@ interface ComponentLayout {
   intervalsByLayer: Map<number, ComponentInterval[]>
 }
 
-const createGeneratedPositions = (document: FamilyTreeDocument): Map<string, Position> => {
-  const graph = createFamilyComponentGraph(document)
+const createGeneratedPositions = (document: LayoutDocument): Map<string, Position> => {
+  const graph = createLayeredFamilyComponentGraph(document)
   const { components, parentComponents, childrenByComponent } = graph
   if (components.length === 0) return new Map()
 
-  assignComponentLayers(document, graph)
-
   const componentById = new Map(components.map((component) => [component.id, component]))
   const personById = new Map(document.persons.map((person) => [person.id, person]))
-  const childPersonsByParentComponent = new Map<string, Map<string, Person[]>>()
+  const childPersonsByParentComponent = new Map<string, Map<string, LayoutPerson[]>>()
   document.relationships.forEach((relationship) => {
     if (relationship.type !== 'parent-child') return
 
@@ -427,8 +560,8 @@ const createGeneratedPositions = (document: FamilyTreeDocument): Map<string, Pos
     if (!parentComponentId || !childComponentId || !childPerson) return
 
     const childrenByComponent =
-      childPersonsByParentComponent.get(parentComponentId) ?? new Map<string, Person[]>()
-    const childPersons: Person[] = childrenByComponent.get(childComponentId) ?? []
+      childPersonsByParentComponent.get(parentComponentId) ?? new Map<string, LayoutPerson[]>()
+    const childPersons: LayoutPerson[] = childrenByComponent.get(childComponentId) ?? []
     if (!childPersons.some((person) => person.id === childPerson.id)) {
       childPersons.push(childPerson)
     }
@@ -643,10 +776,20 @@ const formatYears = (person: Person) => {
   return ''
 }
 
+const isMinor = (person: Person) => {
+  const birthDate = parsePartialDate(person.birthYear)
+  const deathDate = parsePartialDate(person.deathYear)
+  if (!birthDate || !deathDate) return false
+
+  const ageInYears = deathDate.year - birthDate.year
+  return ageInYears >= 0 && ageInYears < 18
+}
+
 const projectPerson = (
   person: Person,
   position: Position,
   selection: GraphSelection,
+  isCommonChild: boolean,
 ): Node<PersonNodeData> => ({
   id: person.id,
   type: 'person',
@@ -654,16 +797,42 @@ const projectPerson = (
   selected: selection?.type === 'person' && selection.id === person.id,
   data: {
     personId: person.id,
+    firstName: person.firstName,
+    lastName: person.lastName,
     label: `${person.firstName} ${person.lastName}`,
     years: formatYears(person),
     gender: person.gender,
+    isMinor: isMinor(person),
+    isCommonChild,
     selected: selection?.type === 'person' && selection.id === person.id,
+  },
+})
+
+const projectChildGroup = (
+  group: ChildGroup,
+  position: Position,
+  selection: GraphSelection,
+): Node<ChildGroupNodeData> => ({
+  id: group.id,
+  type: 'child-group',
+  position,
+  selected: selection?.type === 'child-group' && selection.id === group.id,
+  data: {
+    groupId: group.id,
+    marriageId: group.marriageId,
+    childIds: group.childIds,
+    label: `${group.childIds.length} Kinder`,
+    selected: selection?.type === 'child-group' && selection.id === group.id,
   },
 })
 
 const projectRelationship = (
   relationship: Relationship,
   selection: GraphSelection,
+  endpoints: { source: string; target: string } = {
+    source: relationship.fromId,
+    target: relationship.toId,
+  },
 ): Edge<RelationshipEdgeData> => {
   const origin = getRelationshipOrigin(relationship)
   const isInferred = relationship.status === 'inferred'
@@ -674,8 +843,8 @@ const projectRelationship = (
 
   return {
     id: relationship.id,
-    source: relationship.fromId,
-    target: relationship.toId,
+    source: endpoints.source,
+    target: endpoints.target,
     sourceHandle: isParentChild
       ? relationshipHandleIds.parentSource
       : relationshipHandleIds.marriageSide,
@@ -724,19 +893,59 @@ export const projectFamilyTree = (
   selection?: GraphSelection,
   positionOverrides: ReadonlyMap<string, Position> = new Map(),
   viewOptions: GraphViewOptions = {},
+  activeGroups: readonly ChildGroup[] = [],
 ): GraphProjection => {
   const visibleDocument = filterFamilyTreeDocument(document, viewOptions)
-  const positions = createGeneratedPositions(visibleDocument)
+  const commonChildIds = selection?.type === 'relationship'
+    ? new Set(findCommonChildren(document, selection.id))
+    : new Set<string>()
+  const visiblePersonIds = new Set(visibleDocument.persons.map((person) => person.id))
+  const groups = renderableChildGroups(document, visiblePersonIds, activeGroups)
+  const groupByChildId = new Map<string, string>()
+  groups.forEach((group) => {
+    group.childIds.forEach((childId) => groupByChildId.set(childId, group.id))
+  })
+  const displayPersons: LayoutPerson[] = [
+    ...visibleDocument.persons.filter((person) => !groupByChildId.has(person.id)),
+    ...groups.map((group) => ({
+      id: group.id,
+      gender: null,
+      birthYear: null,
+    })),
+  ]
+  const displayRelationships: Relationship[] = visibleDocument.relationships.flatMap(
+    (relationship) => {
+      const source = groupByChildId.get(relationship.fromId) ?? relationship.fromId
+      const target = groupByChildId.get(relationship.toId) ?? relationship.toId
+      return source === target ? [] : [{ ...relationship, fromId: source, toId: target }]
+    },
+  )
+  const positions = createGeneratedPositions({
+    persons: displayPersons,
+    relationships: displayRelationships,
+  })
 
   return {
-    nodes: visibleDocument.persons.map((person) =>
-      projectPerson(
-        person,
-        positionOverrides.get(person.id) ?? positions.get(person.id) ?? { x: 120, y: 80 },
-        selection,
+    nodes: [
+      ...visibleDocument.persons
+        .filter((person) => !groupByChildId.has(person.id))
+        .map((person) =>
+          projectPerson(
+            person,
+            positionOverrides.get(person.id) ?? positions.get(person.id) ?? { x: 120, y: 80 },
+            selection,
+            commonChildIds.has(person.id),
+          ),
+        ),
+      ...groups.map((group) =>
+        projectChildGroup(
+          group,
+          positionOverrides.get(group.id) ?? positions.get(group.id) ?? { x: 120, y: 80 },
+          selection,
+        ),
       ),
-    ),
-    edges: visibleDocument.relationships.map((relationship) =>
+    ],
+    edges: displayRelationships.map((relationship) =>
       projectRelationship(relationship, selection),
     ),
     fitViewOptions: { ...defaultFitViewOptions },
