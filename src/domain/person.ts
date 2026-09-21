@@ -325,6 +325,44 @@ export const createPerson = (
   }
 }
 
+export const removePerson = (
+  document: FamilyTreeDocument,
+  personId: string,
+): Result<FamilyTreeDocument> => {
+  if (!document.persons.some((person) => person.id === personId)) {
+    return {
+      ok: false,
+      error: error(
+        'person-not-found',
+        'Die Person wurde nicht gefunden.',
+        undefined,
+        personId,
+      ),
+    }
+  }
+
+  const candidate: FamilyTreeDocument = {
+    ...document,
+    persons: document.persons.filter((person) => person.id !== personId),
+    relationships: document.relationships.filter(
+      (relationship) => relationship.fromId !== personId && relationship.toId !== personId,
+    ),
+  }
+  const synchronized = synchronizeInferredRelationships(candidate)
+  const validationError = validateFamilyTreeDocument(synchronized)
+  if (validationError) {
+    return {
+      ok: false,
+      error: {
+        ...validationError,
+        code: 'person-remove-invalid-document',
+      },
+    }
+  }
+
+  return { ok: true, value: synchronized }
+}
+
 export const mergePersons = (
   document: FamilyTreeDocument,
   survivorId: string,

@@ -57,6 +57,8 @@ export interface ChildGroup {
 
 const childGroupId = (marriageId: string) => `children-group:${marriageId}`
 
+const selectedEdgeColor = '#a84d39'
+
 export const findCommonChildren = (
   document: FamilyTreeDocument,
   marriageId: string,
@@ -153,6 +155,19 @@ const defaultFitViewOptions = {
   padding: 0.2,
   minZoom: 0.01,
   maxZoom: 1.4,
+}
+
+const hasActiveViewFilter = (viewOptions: GraphViewOptions) => {
+  const hasAnchoredDistance = Boolean(
+    viewOptions.anchorPersonId &&
+    viewOptions.distance !== null &&
+    viewOptions.distance !== undefined,
+  )
+  const hasAnchoredBloodline = Boolean(
+    viewOptions.anchorPersonId && viewOptions.bloodlineMode,
+  )
+
+  return Boolean(viewOptions.hideLeaves || hasAnchoredDistance || hasAnchoredBloodline)
 }
 
 const NODE_WIDTH = 148
@@ -837,7 +852,10 @@ const projectRelationship = (
   const origin = getRelationshipOrigin(relationship)
   const isInferred = relationship.status === 'inferred'
   const isParentChild = relationship.type === 'parent-child'
-  const edgeColor = origin === 'ocr-suggestion'
+  const selected = selection?.type === 'relationship' && selection.id === relationship.id
+  const edgeColor = selected
+    ? selectedEdgeColor
+    : origin === 'ocr-suggestion'
     ? '#a77b28'
     : isParentChild ? '#385b59' : '#c6654c'
 
@@ -852,13 +870,14 @@ const projectRelationship = (
       ? relationshipHandleIds.childTarget
       : relationshipHandleIds.marriageSide,
     type: 'simplebezier',
-    selected: selection?.type === 'relationship' && selection.id === relationship.id,
+    selected,
     className: [
       'relationship-edge',
       isInferred ? 'relationship-edge--inferred' : 'relationship-edge--explicit',
       `relationship-edge--${origin}`,
       isParentChild ? 'relationship-edge--parent-child' : 'relationship-edge--marriage',
-    ].join(' '),
+      selected ? 'relationship-edge--selected' : '',
+    ].filter(Boolean).join(' '),
     label: isParentChild ? '' : '⚭',
     labelStyle: { fill: edgeColor, fontSize: 10, fontWeight: 700 },
     labelBgStyle: { fill: '#fffdf8', fillOpacity: 0.94, stroke: edgeColor },
@@ -866,7 +885,7 @@ const projectRelationship = (
     labelBgBorderRadius: 2,
     style: {
       stroke: edgeColor,
-      strokeWidth: 2.2,
+      strokeWidth: selected ? 4 : 2.2,
       ...(isInferred ? { strokeDasharray: '7 5' } : {}),
     },
     data: {
@@ -924,6 +943,9 @@ export const projectFamilyTree = (
     persons: displayPersons,
     relationships: displayRelationships,
   })
+  const effectivePositionOverrides = hasActiveViewFilter(viewOptions)
+    ? new Map<string, Position>()
+    : positionOverrides
 
   return {
     nodes: [
@@ -932,7 +954,9 @@ export const projectFamilyTree = (
         .map((person) =>
           projectPerson(
             person,
-            positionOverrides.get(person.id) ?? positions.get(person.id) ?? { x: 120, y: 80 },
+            effectivePositionOverrides.get(person.id) ??
+              positions.get(person.id) ??
+              { x: 120, y: 80 },
             selection,
             commonChildIds.has(person.id),
           ),
@@ -940,7 +964,9 @@ export const projectFamilyTree = (
       ...groups.map((group) =>
         projectChildGroup(
           group,
-          positionOverrides.get(group.id) ?? positions.get(group.id) ?? { x: 120, y: 80 },
+          effectivePositionOverrides.get(group.id) ??
+            positions.get(group.id) ??
+            { x: 120, y: 80 },
           selection,
         ),
       ),

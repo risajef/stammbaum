@@ -55,6 +55,44 @@ const document: FamilyTreeDocument = {
   ],
 }
 
+const ancestorDocument: FamilyTreeDocument = {
+  schemaVersion: 1,
+  persons: [
+    person('anchor', '1900'),
+    person('parent', '1870', 'woman'),
+    person('grandparent', '1840'),
+    person('other-grandparent', '1842'),
+    person('parent-partner', '1871', 'man'),
+    person('grandparent-partner', '1841', 'woman'),
+    person('other-grandparent-partner', '1843', 'man'),
+    person('full-sibling', '1872'),
+    person('half-sibling', '1873'),
+    person('sibling-partner', '1874'),
+    person('half-sibling-partner', '1875'),
+    person('sibling-child', '1901'),
+    person('sibling-child-partner', '1902'),
+    person('partner-parent', '1850'),
+    person('anchor-partner', '1901'),
+  ],
+  relationships: [
+    relationship('parent-anchor', 'parent-child', 'parent', 'anchor'),
+    relationship('grandparent-parent', 'parent-child', 'grandparent', 'parent'),
+    relationship('other-grandparent-parent', 'parent-child', 'other-grandparent', 'parent'),
+    relationship('grandparent-full-sibling', 'parent-child', 'grandparent', 'full-sibling'),
+    relationship('other-grandparent-full-sibling', 'parent-child', 'other-grandparent', 'full-sibling'),
+    relationship('other-grandparent-half-sibling', 'parent-child', 'other-grandparent', 'half-sibling'),
+    relationship('parent-partner-link', 'marriage', 'parent', 'parent-partner'),
+    relationship('grandparent-partner-link', 'marriage', 'grandparent', 'grandparent-partner'),
+    relationship('other-grandparent-partner-link', 'marriage', 'other-grandparent', 'other-grandparent-partner'),
+    relationship('sibling-partner-link', 'marriage', 'full-sibling', 'sibling-partner'),
+    relationship('half-sibling-partner-link', 'marriage', 'half-sibling', 'half-sibling-partner'),
+    relationship('full-sibling-child', 'parent-child', 'full-sibling', 'sibling-child'),
+    relationship('sibling-partner-parent', 'parent-child', 'partner-parent', 'sibling-partner'),
+    relationship('sibling-child-partner-link', 'marriage', 'sibling-child', 'sibling-child-partner'),
+    relationship('anchor-partner-link', 'marriage', 'anchor', 'anchor-partner'),
+  ],
+}
+
 const namedPerson = (
   id: string,
   firstName: string,
@@ -126,6 +164,38 @@ describe('family tree view projection', () => {
     ])
   })
 
+  it('matches configured name variants and a single token from a compound first name', () => {
+    const variantDocument: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        namedPerson('schelling', 'Maria', 'Schelling', '1900-01-01'),
+        namedPerson('schilling', 'Maria', 'Schilling', '1900-01-01'),
+        namedPerson('weber', 'Anna', 'Weber', '1901-01-01'),
+        namedPerson('waeber', 'Anna', 'Wäber', '1901-01-01'),
+        namedPerson('jacob', 'Jacob', 'Test', '1902-01-01'),
+        namedPerson('jakob', 'Jakob', 'Test', '1902-01-01'),
+        namedPerson('elisabeth', 'Elisabeth', 'Test', '1903-01-01'),
+        namedPerson('eisabetha', 'Eisabetha', 'Test', '1903-01-01'),
+        namedPerson('rahel', 'Rahel', 'Test', '1904-01-01'),
+        namedPerson('rachel', 'Rachel', 'Test', '1904-01-01'),
+        namedPerson('compound', 'Johann Heinrich', 'Test', '1905-01-01'),
+        namedPerson('single', 'Heinrich', 'Test', '1905-01-01'),
+        namedPerson('not-variant-a', 'Müller', 'Test', '1906-01-01'),
+        namedPerson('not-variant-b', 'Mueller', 'Test', '1906-01-01'),
+      ],
+      relationships: [],
+    }
+
+    expect(findDuplicatePersonPairs(variantDocument, new Map())).toEqual([
+      { firstPersonId: 'schelling', secondPersonId: 'schilling', priority: 1 },
+      { firstPersonId: 'weber', secondPersonId: 'waeber', priority: 1 },
+      { firstPersonId: 'jacob', secondPersonId: 'jakob', priority: 1 },
+      { firstPersonId: 'elisabeth', secondPersonId: 'eisabetha', priority: 1 },
+      { firstPersonId: 'rahel', secondPersonId: 'rachel', priority: 1 },
+      { firstPersonId: 'compound', secondPersonId: 'single', priority: 1 },
+    ])
+  })
+
   it('excludes direct parent-child pairs even when their missing dates are generation-compatible', () => {
     const directFamilyDocument: FamilyTreeDocument = {
       schemaVersion: 1,
@@ -190,7 +260,7 @@ describe('family tree view projection', () => {
   it('keeps only the parent-child component for blood relatives', () => {
     const bloodRelatives = filterFamilyTreeDocument(document, {
       anchorPersonId: 'anchor',
-      bloodOnly: true,
+      bloodlineMode: 'blood',
     })
 
     expect(bloodRelatives.persons.map(({ id }) => id)).toEqual([
@@ -204,6 +274,58 @@ describe('family tree view projection', () => {
       'mother-sibling',
       'anchor-child',
     ])
+  })
+
+  it('shows direct ancestors and their partners without side lines', () => {
+    const directAncestors = filterFamilyTreeDocument(ancestorDocument, {
+      anchorPersonId: 'anchor',
+      bloodlineMode: 'direct-ancestors',
+    })
+
+    expect(directAncestors.persons.map(({ id }) => id)).toEqual([
+      'anchor',
+      'parent',
+      'grandparent',
+      'other-grandparent',
+      'parent-partner',
+      'grandparent-partner',
+      'other-grandparent-partner',
+    ])
+    expect(directAncestors.persons.map(({ id }) => id)).not.toEqual(
+      expect.arrayContaining(['full-sibling', 'half-sibling', 'anchor-partner']),
+    )
+  })
+
+  it('shows ancestor siblings and their partners without their descendants', () => {
+    const extendedAncestors = filterFamilyTreeDocument(ancestorDocument, {
+      anchorPersonId: 'anchor',
+      bloodlineMode: 'extended-direct-ancestors',
+    })
+
+    expect(extendedAncestors.persons.map(({ id }) => id)).toEqual([
+      'anchor',
+      'parent',
+      'grandparent',
+      'other-grandparent',
+      'parent-partner',
+      'grandparent-partner',
+      'other-grandparent-partner',
+      'full-sibling',
+      'half-sibling',
+      'sibling-partner',
+      'half-sibling-partner',
+    ])
+    expect(extendedAncestors.persons.map(({ id }) => id)).not.toEqual(
+      expect.arrayContaining([
+        'sibling-child',
+        'sibling-child-partner',
+        'partner-parent',
+        'anchor-partner',
+      ]),
+    )
+    expect(extendedAncestors.relationships.every(({ fromId, toId }) =>
+      extendedAncestors.persons.some(({ id }) => id === fromId) &&
+      extendedAncestors.persons.some(({ id }) => id === toId))).toBe(true)
   })
 
   it('does not cross from a descendant to the other parent or that family', () => {
@@ -225,7 +347,7 @@ describe('family tree view projection', () => {
 
     const bloodRelatives = filterFamilyTreeDocument(documentWithPartners, {
       anchorPersonId: 'anchor',
-      bloodOnly: true,
+      bloodlineMode: 'blood',
     })
 
     expect(bloodRelatives.persons.map(({ id }) => id)).toEqual([
@@ -254,7 +376,7 @@ describe('family tree view projection', () => {
     const visible = filterFamilyTreeDocument(document, {
       anchorPersonId: 'anchor',
       distance: 2,
-      bloodOnly: true,
+      bloodlineMode: 'blood',
       hideLeaves: true,
     })
 

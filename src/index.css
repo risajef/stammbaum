@@ -313,6 +313,20 @@ button {
   flex-wrap: wrap;
 }
 
+.view-filter-group {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.view-filter-group-label {
+  align-self: center;
+  color: var(--muted-ink);
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
 .view-field {
   display: grid;
   gap: 3px;
@@ -571,6 +585,11 @@ button {
 
 .relationship-edge--automatic-inference .react-flow__edge-path {
   stroke-dasharray: 7 5;
+}
+
+.relationship-edge--selected .react-flow__edge-path {
+  stroke: var(--coral-dark);
+  filter: drop-shadow(0 0 2px rgba(168, 77, 57, 0.38));
 }
 
 .react-flow__controls {
@@ -1587,6 +1606,10 @@ button {
   .view-toggle,
   .view-field--distance {
     min-width: 0;
+  }
+
+  .view-filter-group {
+    grid-column: 1 / -1;
   }
 
   .view-toggle {

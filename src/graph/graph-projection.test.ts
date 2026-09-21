@@ -302,6 +302,30 @@ describe('family tree graph projection', () => {
     })
   })
 
+  it('recomputes filtered positions instead of reusing positions from before a document change', () => {
+    const viewOptions = {
+      anchorPersonId: 'woman-1',
+      distance: 2,
+    }
+    const expected = projectFamilyTree(documentFixture, undefined, new Map(), viewOptions)
+    const staleOverrides = new Map([
+      ['woman-1', { x: 2400, y: 1800 }],
+      ['man-1', { x: 2700, y: 1800 }],
+      ['child-1', { x: 2550, y: 2400 }],
+    ])
+
+    const actual = projectFamilyTree(
+      documentFixture,
+      undefined,
+      staleOverrides,
+      viewOptions,
+    )
+
+    expect(actual.nodes.map(({ id, position }) => ({ id, position }))).toEqual(
+      expected.nodes.map(({ id, position }) => ({ id, position })),
+    )
+  })
+
   it('displays partial life dates without adding missing components', () => {
     const document: FamilyTreeDocument = {
       ...documentFixture,
@@ -1280,12 +1304,17 @@ describe('family tree graph projection', () => {
       type: 'simplebezier',
       label: '',
       selected: true,
+      className: expect.stringContaining('relationship-edge--selected'),
       data: {
         relationshipType: 'parent-child',
         status: 'inferred',
         sourceUrl: 'https://example.org/source',
       },
-      style: { strokeDasharray: '7 5' },
+      style: {
+        stroke: '#a84d39',
+        strokeWidth: 4,
+        strokeDasharray: '7 5',
+      },
     })
     expect(parentChild?.markerEnd).toBeDefined()
   })

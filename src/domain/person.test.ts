@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { createEmptyDocument, createPerson, mergePersons, updatePerson } from './person'
+import {
+  createEmptyDocument,
+  createPerson,
+  mergePersons,
+  removePerson,
+  updatePerson,
+} from './person'
 import type { FamilyTreeDocument, Person, Relationship, RelationshipType } from './types'
 
 const mergePerson = (id: string, changes: Partial<Person> = {}): Person => ({
@@ -228,6 +234,50 @@ describe('person domain operations', () => {
       })
       expect(result.value.relationships).toEqual(document.relationships)
     }
+  })
+
+  it('removes a person and all relationships that reference them', () => {
+    const document = mergeDocument(
+      [
+        mergePerson('person-1'),
+        mergePerson('spouse', { firstName: 'Max', gender: 'man' }),
+        mergePerson('parent', { firstName: 'Paul', gender: 'man' }),
+        mergePerson('child', { firstName: 'Lina' }),
+        mergePerson('other-child', { firstName: 'Mia' }),
+      ],
+      [
+        mergeRelationship('marriage', 'marriage', 'person-1', 'spouse'),
+        mergeRelationship('parent-person', 'parent-child', 'parent', 'person-1'),
+        mergeRelationship('person-child', 'parent-child', 'person-1', 'child'),
+        mergeRelationship('other-parent-child', 'parent-child', 'parent', 'other-child'),
+      ],
+    )
+
+    const result = removePerson(document, 'person-1')
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        persons: [
+          expect.objectContaining({ id: 'spouse' }),
+          expect.objectContaining({ id: 'parent' }),
+          expect.objectContaining({ id: 'child' }),
+          expect.objectContaining({ id: 'other-child' }),
+        ],
+        relationships: [
+          expect.objectContaining({ id: 'other-parent-child' }),
+        ],
+      },
+    })
+  })
+
+  it('rejects removing an unknown person without changing the document', () => {
+    const document = mergeDocument([mergePerson('person-1')])
+
+    const result = removePerson(document, 'missing')
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'person-not-found' } })
+    expect(document).toEqual(mergeDocument([mergePerson('person-1')]))
   })
 
   it.each([

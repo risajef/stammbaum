@@ -1,5 +1,6 @@
 import type { DateValue, FamilyTreeDocument, Person, Relationship } from '../domain/types'
 import { comparePartialDates, parsePartialDate, type PartialDateParts } from '../domain/life-date'
+import { duplicateNameMatcher, type DuplicateNameMatcher } from './duplicate-name-variants'
 
 export type DuplicatePriority = 1 | 2 | 3 | 4
 
@@ -9,10 +10,12 @@ export interface DuplicatePersonPair {
   priority: DuplicatePriority
 }
 
+export type BloodlineMode = 'blood' | 'direct-ancestors' | 'extended-direct-ancestors'
+
 export interface GraphViewOptions {
   anchorPersonId?: string | null
   distance?: number | null
-  bloodOnly?: boolean
+  bloodlineMode?: BloodlineMode | null
   hideLeaves?: boolean
 }
 
@@ -69,50 +72,74 @@ const idsWithinDistance = (
   return new Set(distances.keys())
 }
 
-const bloodRelativeIds = (
-  document: FamilyTreeDocument,
-  anchorPersonId: string,
-) => {
-  const personIds = personIdsFor(document)
-  if (!personIds.has(anchorPersonId)) {
-    return new Set<string>()
-  }
+type FamilyIndexes = {
+  parentsByChild: Map<string, Set<string>>
+  childrenByParent: Map<string, Set<string>>
+  partnersByPerson: Map<string, Set<string>>
+}
 
+const familyIndexesFor = (document: FamilyTreeDocument): FamilyIndexes => {
+  const personIds = personIdsFor(document)
   const parentsByChild = new Map<string, Set<string>>()
   const childrenByParent = new Map<string, Set<string>>()
-  document.relationships.forEach((relationship) => {
-    if (relationship.type !== 'parent-child') return
-    if (!personIds.has(relationship.fromId) || !personIds.has(relationship.toId)) return
+  const partnersByPerson = new Map<string, Set<string>>()
 
-    const parents = parentsByChild.get(relationship.toId) ?? new Set<string>()
-    parents.add(relationship.fromId)
-    parentsByChild.set(relationship.toId, parents)
-
-    const children = childrenByParent.get(relationship.fromId) ?? new Set<string>()
-    children.add(relationship.toId)
-    childrenByParent.set(relationship.fromId, children)
+  document.persons.forEach((person) => {
+    parentsByChild.set(person.id, new Set())
+    childrenByParent.set(person.id, new Set())
+    partnersByPerson.set(person.id, new Set())
   })
 
+  document.relationships.forEach((relationship) => {
+    if (!personIds.has(relationship.fromId) || !personIds.has(relationship.toId)) return
+
+    if (relationship.type === 'parent-child') {
+      parentsByChild.get(relationship.toId)?.add(relationship.fromId)
+      childrenByParent.get(relationship.fromId)?.add(relationship.toId)
+      return
+    }
+
+    partnersByPerson.get(relationship.fromId)?.add(relationship.toId)
+    partnersByPerson.get(relationship.toId)?.add(relationship.fromId)
+  })
+
+  return { parentsByChild, childrenByParent, partnersByPerson }
+}
+
+const ancestorIdsFor = (
+  anchorPersonId: string,
+  parentsByChild: ReadonlyMap<string, ReadonlySet<string>>,
+) => {
   const ancestors = new Set<string>([anchorPersonId])
-  const pendingAncestors = [anchorPersonId]
-  while (pendingAncestors.length > 0) {
-    const currentId = pendingAncestors.shift()
+  const pending = [anchorPersonId]
+
+  while (pending.length > 0) {
+    const currentId = pending.shift()
     if (!currentId) continue
 
     for (const parentId of parentsByChild.get(currentId) ?? []) {
       if (ancestors.has(parentId)) continue
       ancestors.add(parentId)
-      pendingAncestors.push(parentId)
+      pending.push(parentId)
     }
   }
 
+  return ancestors
+}
+
+const bloodRelativeIds = (
+  indexes: FamilyIndexes,
+  anchorPersonId: string,
+) => {
+  const ancestors = ancestorIdsFor(anchorPersonId, indexes.parentsByChild)
   const relatives = new Set(ancestors)
   const pendingDescendants = [...ancestors]
+
   while (pendingDescendants.length > 0) {
     const currentId = pendingDescendants.shift()
     if (!currentId) continue
 
-    for (const childId of childrenByParent.get(currentId) ?? []) {
+    for (const childId of indexes.childrenByParent.get(currentId) ?? []) {
       if (relatives.has(childId)) continue
       relatives.add(childId)
       pendingDescendants.push(childId)
@@ -120,6 +147,57 @@ const bloodRelativeIds = (
   }
 
   return relatives
+}
+
+const directAncestorIds = (
+  indexes: FamilyIndexes,
+  anchorPersonId: string,
+  extended: boolean,
+) => {
+  const ancestors = ancestorIdsFor(anchorPersonId, indexes.parentsByChild)
+  const directAncestors = new Set(ancestors)
+  directAncestors.delete(anchorPersonId)
+
+  const included = new Set(ancestors)
+  const siblings = new Set<string>()
+
+  if (extended) {
+    directAncestors.forEach((ancestorId) => {
+      for (const parentId of indexes.parentsByChild.get(ancestorId) ?? []) {
+        for (const siblingId of indexes.childrenByParent.get(parentId) ?? []) {
+          if (siblingId !== ancestorId) siblings.add(siblingId)
+        }
+      }
+    })
+    siblings.forEach((siblingId) => included.add(siblingId))
+  }
+
+  const partnerSources = new Set(directAncestors)
+  if (extended) {
+    siblings.forEach((siblingId) => partnerSources.add(siblingId))
+  }
+  partnerSources.forEach((personId) => {
+    for (const partnerId of indexes.partnersByPerson.get(personId) ?? []) {
+      included.add(partnerId)
+    }
+  })
+
+  return included
+}
+
+const bloodlineIds = (
+  document: FamilyTreeDocument,
+  anchorPersonId: string,
+  mode: BloodlineMode,
+) => {
+  const indexes = familyIndexesFor(document)
+  if (mode === 'blood') return bloodRelativeIds(indexes, anchorPersonId)
+
+  return directAncestorIds(
+    indexes,
+    anchorPersonId,
+    mode === 'extended-direct-ancestors',
+  )
 }
 
 const intersectIds = (currentIds: Set<string>, allowedIds: ReadonlySet<string>) => {
@@ -153,10 +231,10 @@ export const filterFamilyTreeDocument = (
     )
   }
 
-  if (options.bloodOnly && anchorPersonId && visiblePersonIds.has(anchorPersonId)) {
+  if (options.bloodlineMode && anchorPersonId && visiblePersonIds.has(anchorPersonId)) {
     intersectIds(
       visiblePersonIds,
-      bloodRelativeIds(document, anchorPersonId),
+      bloodlineIds(document, anchorPersonId, options.bloodlineMode),
     )
   }
 
@@ -180,10 +258,6 @@ export const filterFamilyTreeDocument = (
 }
 
 const personName = (person: Person) => `${person.firstName} ${person.lastName}`
-
-const duplicateNameKey = (person: Person) => [person.firstName, person.lastName]
-  .map((value) => value.trim().toLocaleLowerCase('de-DE'))
-  .join('\u0000')
 
 const unorderedPersonPairKey = (firstPersonId: string, secondPersonId: string) =>
   [firstPersonId, secondPersonId].sort().join('\u0000')
@@ -259,41 +333,37 @@ const duplicatePriority = (
 export const findDuplicatePersonPairs = (
   document: FamilyTreeDocument,
   generations: ReadonlyMap<string, number>,
+  nameMatcher: DuplicateNameMatcher = duplicateNameMatcher,
 ): DuplicatePersonPair[] => {
-  const personsByName = new Map<string, Person[]>()
   const directParentChildPairs = new Set(
     document.relationships
       .filter(({ type }) => type === 'parent-child')
       .map(({ fromId, toId }) => unorderedPersonPairKey(fromId, toId)),
   )
-  document.persons.forEach((person) => {
-    const nameKey = duplicateNameKey(person)
-    const persons = personsByName.get(nameKey) ?? []
-    persons.push(person)
-    personsByName.set(nameKey, persons)
-  })
-
   const personIndexes = new Map(document.persons.map((person, index) => [person.id, index]))
   const pairs: DuplicatePersonPair[] = []
-  personsByName.forEach((persons) => {
-    for (let firstIndex = 0; firstIndex < persons.length - 1; firstIndex += 1) {
-      for (let secondIndex = firstIndex + 1; secondIndex < persons.length; secondIndex += 1) {
-        const first = persons[firstIndex]
-        const second = persons[secondIndex]
-        if (directParentChildPairs.has(unorderedPersonPairKey(first.id, second.id))) {
-          continue
-        }
-        const priority = duplicatePriority(first, second, generations)
-        if (priority === null) continue
-
-        pairs.push({
-          firstPersonId: first.id,
-          secondPersonId: second.id,
-          priority,
-        })
+  for (let firstIndex = 0; firstIndex < document.persons.length - 1; firstIndex += 1) {
+    for (let secondIndex = firstIndex + 1; secondIndex < document.persons.length; secondIndex += 1) {
+      const first = document.persons[firstIndex]
+      const second = document.persons[secondIndex]
+      if (
+        !nameMatcher.firstNamesMatch(first.firstName, second.firstName) ||
+        !nameMatcher.lastNamesMatch(first.lastName, second.lastName) ||
+        directParentChildPairs.has(unorderedPersonPairKey(first.id, second.id))
+      ) {
+        continue
       }
+
+      const priority = duplicatePriority(first, second, generations)
+      if (priority === null) continue
+
+      pairs.push({
+        firstPersonId: first.id,
+        secondPersonId: second.id,
+        priority,
+      })
     }
-  })
+  }
 
   return pairs.sort((first, second) =>
     first.priority - second.priority ||

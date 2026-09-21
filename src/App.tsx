@@ -9,7 +9,13 @@ import {
   type NodeChange,
 } from '@xyflow/react'
 
-import { createEmptyDocument, createPerson, mergePersons, updatePerson } from './domain/person'
+import {
+  createEmptyDocument,
+  createPerson,
+  mergePersons,
+  removePerson,
+  updatePerson,
+} from './domain/person'
 import { synchronizeInferredRelationships } from './domain/inference'
 import {
   createMarriage,
@@ -36,6 +42,7 @@ import {
   filterFamilyTreeDocument,
   findDuplicatePersonPairs,
   findPersonSearchMatches,
+  type BloodlineMode,
   type GraphViewOptions,
 } from './graph/graph-view'
 import {
@@ -196,7 +203,7 @@ function App() {
   const [isLocalView, setIsLocalView] = useState(false)
   const [localAnchorId, setLocalAnchorId] = useState<string | null>(null)
   const [localDistance, setLocalDistance] = useState(1)
-  const [bloodOnly, setBloodOnly] = useState(false)
+  const [bloodlineMode, setBloodlineMode] = useState<BloodlineMode | null>(null)
   const [hideLeaves, setHideLeaves] = useState(false)
   const [ocrImportState, setOcrImportState] = useState<OcrImportViewState>(
     createEmptyOcrImportState,
@@ -210,7 +217,7 @@ function App() {
   const flowSurfaceRef = useRef<HTMLDivElement>(null)
   const viewAnchorId = isLocalView
     ? localAnchorId
-    : bloodOnly && selection?.type === 'person'
+    : bloodlineMode && selection?.type === 'person'
       ? selection.id
       : null
 
@@ -218,11 +225,16 @@ function App() {
     () => ({
       anchorPersonId: viewAnchorId,
       distance: isLocalView ? localDistance : null,
-      bloodOnly,
+      bloodlineMode,
       hideLeaves,
     }),
-    [bloodOnly, hideLeaves, isLocalView, localDistance, viewAnchorId],
+    [bloodlineMode, hideLeaves, isLocalView, localDistance, viewAnchorId],
   )
+  const viewOptionsKey = JSON.stringify(viewOptions)
+  const previousViewOptionsKey = useRef<string | null>(null)
+  const viewChanged = previousViewOptionsKey.current !== null &&
+    previousViewOptionsKey.current !== viewOptionsKey
+  const emptyPositionOverrides = useMemo(() => new Map<string, Position>(), [])
   const visibleDocument = useMemo(
     () => filterFamilyTreeDocument(document, viewOptions),
     [document, viewOptions],
@@ -243,11 +255,19 @@ function App() {
     () => projectFamilyTree(
       document,
       selection,
-      temporaryPositions,
+      viewChanged ? emptyPositionOverrides : temporaryPositions,
       viewOptions,
       activeChildGroups,
     ),
-    [activeChildGroups, document, selection, temporaryPositions, viewOptions],
+    [
+      activeChildGroups,
+      document,
+      emptyPositionOverrides,
+      selection,
+      temporaryPositions,
+      viewChanged,
+      viewOptions,
+    ],
   )
   const visibleProjectionIds = useMemo(
     () => new Set(projection.nodes.map((node) => node.id)),
@@ -262,6 +282,19 @@ function App() {
       return next.size === current.size ? current : next
     })
   }, [visibleProjectionIds])
+
+  useEffect(() => {
+    const previousKey = previousViewOptionsKey.current
+    previousViewOptionsKey.current = viewOptionsKey
+    if (previousKey === null || previousKey === viewOptionsKey) {
+      return
+    }
+
+    setTemporaryPositions(new Map())
+    setForcePositions(new Map())
+    setFitViewRequest((current) => current + 1)
+  }, [viewOptionsKey])
+
   const selectedPerson =
     selection?.type === 'person'
       ? document.persons.find((person) => person.id === selection.id) ?? null
@@ -439,7 +472,7 @@ function App() {
       setIsLocalView(false)
       setLocalAnchorId(null)
       setLocalDistance(1)
-      setBloodOnly(false)
+      setBloodlineMode(null)
       setHideLeaves(false)
     }
 
@@ -518,7 +551,7 @@ function App() {
     setIsLocalView(false)
     setLocalAnchorId(null)
     setLocalDistance(1)
-    setBloodOnly(false)
+    setBloodlineMode(null)
     setHideLeaves(false)
   }
 
@@ -639,6 +672,39 @@ function App() {
     })
     setPersonToCenter(null)
   }, [])
+
+  const handlePersonRemove = () => {
+    if (!selectedPerson || !window.confirm('Person wirklich entfernen?')) {
+      return
+    }
+
+    const result = removePerson(document, selectedPerson.id)
+    if (!result.ok) {
+      setWorkflowError(result.error.message)
+      return
+    }
+
+    setDocument(result.value)
+    setActiveChildGroups([])
+    setTemporaryPositions(new Map())
+    setForcePositions(new Map())
+    setPersonToCenter(null)
+    setFocusPersonId(null)
+    setMergeSourceId(null)
+    setPendingOcrSuggestion(null)
+    setOcrPersonMatches([])
+    setOcrPersonSearchPersonId(null)
+    setIsCreatingPerson(false)
+    setConnectionDraft(null)
+    if (localAnchorId === selectedPerson.id) {
+      setIsLocalView(false)
+      setLocalAnchorId(null)
+    }
+    setSelection(undefined)
+    setIsDirty(true)
+    setSaveState('Ungespeichert')
+    setWorkflowError(null)
+  }
 
   const handlePersonCancel = () => {
     setPendingOcrSuggestion(null)
@@ -833,7 +899,7 @@ function App() {
   }
 
   const visiblePersonCount = projection.nodes.filter((node) => node.type === 'person').length
-  const hasActiveViewFilters = isLocalView || bloodOnly || hideLeaves
+  const hasActiveViewFilters = isLocalView || bloodlineMode !== null || hideLeaves
 
   const clearTransientState = () => {
     setPendingOcrSuggestion(null)
@@ -1074,15 +1140,49 @@ function App() {
                   ))}
                 </select>
               </label>
-              <label className="view-toggle">
-                <input
-                  aria-label="Nur Blutsverwandte"
-                  checked={bloodOnly}
-                  type="checkbox"
-                  onChange={(event) => setBloodOnly(event.target.checked)}
-                />
-                <span>Nur Blutsverwandte</span>
-              </label>
+              <div aria-label="Blutlinienansicht" className="view-filter-group" role="group">
+                <span className="view-filter-group-label">Blutlinie</span>
+                <label className="view-toggle">
+                  <input
+                    aria-label="Alle Personen"
+                    checked={bloodlineMode === null}
+                    name="bloodline-mode"
+                    type="radio"
+                    onChange={() => setBloodlineMode(null)}
+                  />
+                  <span>Alle Personen</span>
+                </label>
+                <label className="view-toggle">
+                  <input
+                    aria-label="Nur Blutsverwandte"
+                    checked={bloodlineMode === 'blood'}
+                    name="bloodline-mode"
+                    type="radio"
+                    onChange={() => setBloodlineMode('blood')}
+                  />
+                  <span>Nur Blutsverwandte</span>
+                </label>
+                <label className="view-toggle">
+                  <input
+                    aria-label="Direkte Vorfahren"
+                    checked={bloodlineMode === 'direct-ancestors'}
+                    name="bloodline-mode"
+                    type="radio"
+                    onChange={() => setBloodlineMode('direct-ancestors')}
+                  />
+                  <span>Direkte Vorfahren</span>
+                </label>
+                <label className="view-toggle">
+                  <input
+                    aria-label="Erweiterte direkte Vorfahren"
+                    checked={bloodlineMode === 'extended-direct-ancestors'}
+                    name="bloodline-mode"
+                    type="radio"
+                    onChange={() => setBloodlineMode('extended-direct-ancestors')}
+                  />
+                  <span>Erweiterte direkte Vorfahren</span>
+                </label>
+              </div>
               <label className="view-toggle">
                 <input
                   aria-label="Leafs ausblenden"
@@ -1106,10 +1206,11 @@ function App() {
             {viewMode === 'force' ? (
               <ForceTreeView
                 projection={projection}
-                positionOverrides={forcePositions}
+                positionOverrides={viewChanged ? emptyPositionOverrides : forcePositions}
                 onManualPositionChange={handleForcePositionChange}
                 focusPersonId={focusPersonId}
                 focusRequest={focusRequest}
+                fitViewRequest={fitViewRequest}
               />
             ) : (
             <ReactFlow
@@ -1123,6 +1224,7 @@ function App() {
               maxZoom={1.4}
               nodesConnectable
               nodesDraggable
+              elevateEdgesOnSelect
               panOnDrag
               onNodesChange={handleNodesChange}
               onNodeClick={(_event, node) => {
@@ -1215,6 +1317,7 @@ function App() {
               onSave={handlePersonSave}
               onCancel={handlePersonCancel}
               onMerge={handleMergeStart}
+              onRemove={handlePersonRemove}
               mergeMode={Boolean(mergeSourceId)}
             />
           ) : connectionDraft || selection?.type === 'relationship' ? (

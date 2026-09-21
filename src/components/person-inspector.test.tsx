@@ -112,6 +112,32 @@ describe('PersonInspector', () => {
     })
   })
 
+  it('offers person removal only for an existing person', () => {
+    const onRemove = vi.fn()
+
+    const { rerender } = render(
+      <PersonInspector
+        person={person}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+        onRemove={onRemove}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Person entfernen' }))
+    expect(onRemove).toHaveBeenCalledOnce()
+
+    rerender(
+      <PersonInspector
+        person={null}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+        onRemove={onRemove}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Person entfernen' })).not.toBeInTheDocument()
+  })
+
   it('edits a person comment', () => {
     const onSave = vi.fn()
 

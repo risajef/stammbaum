@@ -29,6 +29,7 @@ interface ForceTreeViewProps {
   onManualPositionChange: (nodeId: string, position: Position) => void
   focusPersonId?: string | null
   focusRequest?: number
+  fitViewRequest?: number
 }
 
 const isPositionChange = (
@@ -66,12 +67,27 @@ function FocusPersonOnRequest({
   return null
 }
 
+function FitViewOnRequest({ request }: { request: number }) {
+  const { fitView } = useReactFlow()
+
+  useEffect(() => {
+    if (request === 0) {
+      return
+    }
+
+    void fitView({ padding: 0.2, minZoom: 0.01, maxZoom: 1.4 })
+  }, [fitView, request])
+
+  return null
+}
+
 function ForceTreeView({
   projection,
   positionOverrides,
   onManualPositionChange,
   focusPersonId = null,
   focusRequest = 0,
+  fitViewRequest = 0,
 }: ForceTreeViewProps) {
   const [nodes, setNodes] = useState<ForceGraphNode[]>(projection.nodes)
   const simulationRef = useRef<ReturnType<typeof createForceSimulation> | null>(null)
@@ -209,6 +225,7 @@ function ForceTreeView({
         maxZoom={1.4}
         nodesConnectable={false}
         nodesDraggable
+        elevateEdgesOnSelect
         elementsSelectable={false}
         nodesFocusable={false}
         edgesFocusable={false}
@@ -220,6 +237,7 @@ function ForceTreeView({
         onNodeDragStop={handleNodeDragStop}
         proOptions={proOptions}
       >
+        <FitViewOnRequest request={fitViewRequest} />
         <FocusPersonOnRequest personId={focusPersonId} request={focusRequest} />
         <Background color="#d9d0c2" gap={24} size={1} />
         <Controls showInteractive={false} position="bottom-left" />

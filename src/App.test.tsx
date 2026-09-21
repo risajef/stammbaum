@@ -436,6 +436,59 @@ describe('application workbench', () => {
     expect(screen.getByRole('heading', { name: 'Person bearbeiten' })).toBeInTheDocument()
   })
 
+  it('offers alternative bloodline filters and keeps them anchor-dependent', async () => {
+    const filterYaml = `schemaVersion: 1
+persons:
+  - id: anchor
+    firstName: Anchor
+    lastName: Test
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: other-a
+    firstName: Other
+    lastName: A
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: other-b
+    firstName: Other
+    lastName: B
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+relationships: []`
+    stubYamlOpen(filterYaml, 'filters.yaml')
+
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Öffnen' }))
+    await waitFor(() => expect(screen.getByText('Geöffnet: filters.yaml')).toBeVisible())
+
+    const bloodFilter = screen.getByLabelText('Nur Blutsverwandte')
+    const directFilter = screen.getByLabelText('Direkte Vorfahren')
+    const extendedFilter = screen.getByLabelText('Erweiterte direkte Vorfahren')
+    expect(bloodFilter).toHaveAttribute('type', 'radio')
+    expect(directFilter).toHaveAttribute('type', 'radio')
+    expect(extendedFilter).toHaveAttribute('type', 'radio')
+
+    fireEvent.click(directFilter)
+    expect(screen.getByText('3 von 3 sichtbar')).toBeVisible()
+    expect(directFilter).toBeChecked()
+    expect(bloodFilter).not.toBeChecked()
+    expect(extendedFilter).not.toBeChecked()
+
+    fireEvent.click(screen.getByText('Anchor Test'))
+    expect(screen.getByText('1 von 3 sichtbar')).toBeVisible()
+
+    fireEvent.click(extendedFilter)
+    expect(extendedFilter).toBeChecked()
+    expect(directFilter).not.toBeChecked()
+    expect(screen.getByText('1 von 3 sichtbar')).toBeVisible()
+  })
+
   it('merges the selected person with another node after an irreversible confirmation', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
 
@@ -604,6 +657,67 @@ relationships:
     expect(confirm).toHaveBeenCalled()
     expect(screen.getByRole('alert')).toHaveTextContent('mehr als zwei Eltern')
     expect(screen.getByText('5 Personen')).toBeVisible()
+  })
+
+  it('raises and highlights a selected relationship edge', async () => {
+    stubYamlOpen(collapseTreeYaml)
+
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Öffnen' }))
+    await waitFor(() => expect(screen.getByText('Geöffnet: children.yaml')).toBeVisible())
+
+    const marriageEdge = await edgeById('marriage')
+    fireEvent.click(marriageEdge)
+
+    await waitFor(() => expect(document.querySelector('[data-testid="rf__edge-marriage"]'))
+      .toHaveClass('selected'))
+    const selectedEdge = document.querySelector('[data-testid="rf__edge-marriage"]') as HTMLElement
+    const selectedEdgeLayer = selectedEdge.closest('svg')
+    expect(selectedEdge).toHaveClass('relationship-edge--selected')
+    expect(selectedEdgeLayer).not.toBeNull()
+    expect(selectedEdgeLayer).toHaveStyle({ zIndex: '1000' })
+    expect(selectedEdge.querySelector('.react-flow__edge-path')).toHaveStyle({
+      stroke: '#a84d39',
+      strokeWidth: '4',
+    })
+  })
+
+  it('removes a selected person with all connections after confirmation', async () => {
+    stubYamlOpen(collapseTreeYaml)
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Öffnen' }))
+    await waitFor(() => expect(screen.getByText('Geöffnet: children.yaml')).toBeVisible())
+
+    await waitFor(() => expect(screen.getByText('Anna Weber')).toBeVisible())
+    fireEvent.click(screen.getByText('Anna Weber'))
+    fireEvent.click(screen.getByRole('button', { name: 'Person entfernen' }))
+
+    expect(confirm).toHaveBeenCalledWith('Person wirklich entfernen?')
+    await waitFor(() => expect(screen.queryByText('Anna Weber')).not.toBeInTheDocument())
+    expect(screen.getByText('5 Personen')).toBeVisible()
+    expect(screen.queryByTestId('rf__edge-marriage')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('rf__edge-mother-child-a')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Wähle ein Objekt' })).toBeVisible()
+    expect(screen.getByText('Ungespeichert')).toBeVisible()
+  })
+
+  it('keeps a selected person and its connections when deletion is cancelled', async () => {
+    stubYamlOpen(collapseTreeYaml)
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Öffnen' }))
+    await waitFor(() => expect(screen.getByText('Geöffnet: children.yaml')).toBeVisible())
+
+    await waitFor(() => expect(screen.getByText('Anna Weber')).toBeVisible())
+    fireEvent.click(screen.getByText('Anna Weber'))
+    fireEvent.click(screen.getByRole('button', { name: 'Person entfernen' }))
+
+    expect(screen.getByText('Anna Weber')).toBeVisible()
+    expect(screen.getByTestId('rf__edge-marriage')).toBeInTheDocument()
+    expect(screen.queryByText('Ungespeichert')).not.toBeInTheDocument()
   })
 
   it('opens a selected child group inspector and reselects its marriage after expanding', async () => {

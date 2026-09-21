@@ -8,6 +8,7 @@ interface PersonInspectorProps {
   onSave: (draft: PersonDraft) => DomainError | null | undefined
   onCancel: () => void
   onMerge?: () => void
+  onRemove?: () => void
   mergeMode?: boolean
 }
 
@@ -37,6 +38,7 @@ function PersonInspector({
   onSave,
   onCancel,
   onMerge,
+  onRemove,
   mergeMode = false,
 }: PersonInspectorProps) {
   const [values, setValues] = useState(() => valuesFromPerson(person ?? initialDraft))
@@ -184,6 +186,16 @@ function PersonInspector({
             onClick={onMerge}
           >
             Fusionieren
+          </button>
+        )}
+        {person && onRemove && !mergeMode && (
+          <button
+            aria-label="Person entfernen"
+            className="danger-action"
+            type="button"
+            onClick={onRemove}
+          >
+            Entfernen
           </button>
         )}
         <button className="secondary-action" type="button" onClick={onCancel}>
