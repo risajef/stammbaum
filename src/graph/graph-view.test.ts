@@ -93,6 +93,36 @@ const ancestorDocument: FamilyTreeDocument = {
   ],
 }
 
+const descendantDocument: FamilyTreeDocument = {
+  schemaVersion: 1,
+  persons: [
+    person('anchor', '1900'),
+    person('anchor-partner', '1901'),
+    person('child', '1930'),
+    person('grandchild', '1960'),
+    person('grandchild-partner-a', '1961'),
+    person('grandchild-partner-b', '1962'),
+    person('partner-a-child', '1980'),
+    person('partner-b-child', '1981'),
+    person('partner-a-parent', '1935'),
+    person('partner-a-child-partner', '1982'),
+    person('anchor-partner-child', '1931'),
+    person('separate-descendant', '1932'),
+  ],
+  relationships: [
+    relationship('anchor-partner-link', 'marriage', 'anchor', 'anchor-partner'),
+    relationship('anchor-child', 'parent-child', 'anchor', 'child'),
+    relationship('child-grandchild', 'parent-child', 'child', 'grandchild'),
+    relationship('grandchild-partner-a-link', 'marriage', 'grandchild', 'grandchild-partner-a'),
+    relationship('grandchild-partner-b-link', 'marriage', 'grandchild', 'grandchild-partner-b'),
+    relationship('partner-a-child-link', 'parent-child', 'grandchild-partner-a', 'partner-a-child'),
+    relationship('partner-b-child-link', 'parent-child', 'grandchild-partner-b', 'partner-b-child'),
+    relationship('partner-a-parent-link', 'parent-child', 'partner-a-parent', 'grandchild-partner-a'),
+    relationship('partner-a-child-partner-link', 'marriage', 'partner-a-child', 'partner-a-child-partner'),
+    relationship('anchor-partner-child-link', 'parent-child', 'anchor-partner', 'anchor-partner-child'),
+  ],
+}
+
 const namedPerson = (
   id: string,
   firstName: string,
@@ -255,6 +285,105 @@ describe('family tree view projection', () => {
       'anchor-child',
       'spouse-parent-link',
     ])
+  })
+
+  it('keeps the bloodline anchor independent from the local view anchor', () => {
+    const visible = filterFamilyTreeDocument(document, {
+      anchorPersonId: 'spouse',
+      distance: 1,
+      bloodlineAnchorPersonId: 'anchor',
+      bloodlineMode: 'blood',
+    })
+
+    expect(visible.persons.map(({ id }) => id)).toEqual(['anchor'])
+  })
+
+  it('shows the anchor and all descendants without partner families', () => {
+    const descendants = filterFamilyTreeDocument(descendantDocument, {
+      bloodlineAnchorPersonId: 'anchor',
+      bloodlineMode: 'descendants',
+    })
+
+    expect(descendants.persons.map(({ id }) => id)).toEqual([
+      'anchor',
+      'child',
+      'grandchild',
+    ])
+    expect(descendants.relationships.map(({ id }) => id)).toEqual([
+      'anchor-child',
+      'child-grandchild',
+    ])
+  })
+
+  it('follows descendant lines beyond ten generations', () => {
+    const persons = Array.from({ length: 12 }, (_, index) => person(`generation-${index}`))
+    const longDescendantDocument: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons,
+      relationships: Array.from({ length: 11 }, (_, index) => relationship(
+        `generation-link-${index}`,
+        'parent-child',
+        `generation-${index}`,
+        `generation-${index + 1}`,
+      )),
+    }
+
+    const descendants = filterFamilyTreeDocument(longDescendantDocument, {
+      bloodlineAnchorPersonId: 'generation-0',
+      bloodlineMode: 'descendants',
+    })
+
+    expect(descendants.persons.map(({ id }) => id)).toEqual(
+      persons.map(({ id }) => id),
+    )
+  })
+
+  it('shows descendant partners and their children without following partner chains', () => {
+    const extendedDescendants = filterFamilyTreeDocument(descendantDocument, {
+      bloodlineAnchorPersonId: 'anchor',
+      bloodlineMode: 'extended-descendants',
+    })
+
+    expect(extendedDescendants.persons.map(({ id }) => id)).toEqual([
+      'anchor',
+      'child',
+      'grandchild',
+      'grandchild-partner-a',
+      'grandchild-partner-b',
+      'partner-a-child',
+      'partner-b-child',
+    ])
+    expect(extendedDescendants.persons.map(({ id }) => id)).not.toEqual(
+      expect.arrayContaining([
+        'anchor-partner',
+        'partner-a-parent',
+        'partner-a-child-partner',
+        'anchor-partner-child',
+      ]),
+    )
+  })
+
+  it('keeps newly created people visible until their filter exception is removed', () => {
+    const documentWithNewPerson: FamilyTreeDocument = {
+      ...document,
+      persons: [...document.persons, person('new-person')],
+    }
+    const options = {
+      anchorPersonId: 'anchor',
+      distance: 0,
+      bloodlineAnchorPersonId: 'anchor',
+      bloodlineMode: 'blood' as const,
+      hideLeaves: true,
+    }
+
+    const visibleBeforeSave = filterFamilyTreeDocument(documentWithNewPerson, {
+      ...options,
+      unfilteredPersonIds: ['new-person'],
+    })
+    const visibleAfterSave = filterFamilyTreeDocument(documentWithNewPerson, options)
+
+    expect(visibleBeforeSave.persons.map(({ id }) => id)).toEqual(['anchor', 'new-person'])
+    expect(visibleAfterSave.persons.map(({ id }) => id)).toEqual(['anchor'])
   })
 
   it('keeps only the parent-child component for blood relatives', () => {

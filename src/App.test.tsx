@@ -390,14 +390,22 @@ describe('application workbench', () => {
   })
 
   it('clears a selected person when the leaf filter hides it', async () => {
+    const leafYaml = `schemaVersion: 1
+persons:
+  - id: leaf
+    firstName: Leaf
+    lastName: Test
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+relationships: []`
+    stubYamlOpen(leafYaml, 'leaf.yaml')
+
     render(<App />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Person anlegen' }))
-    fireEvent.change(screen.getByLabelText('Vorname'), { target: { value: 'Leaf' } })
-    fireEvent.change(screen.getByLabelText('Nachname'), { target: { value: 'Test' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Person speichern' }))
-
-    await screen.findByText('Leaf Test')
+    fireEvent.click(screen.getByRole('button', { name: 'Öffnen' }))
+    await waitFor(() => expect(screen.getByText('Geöffnet: leaf.yaml')).toBeVisible())
+    fireEvent.click(await screen.findByText('Leaf Test'))
     expect(screen.getByRole('heading', { name: 'Person bearbeiten' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText('Leafs ausblenden'))
@@ -407,19 +415,36 @@ describe('application workbench', () => {
   })
 
   it('applies local and blood-relative filters to the selected view', async () => {
+    const filterYaml = `schemaVersion: 1
+persons:
+  - id: first
+    firstName: Erste
+    lastName: Test
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: second
+    firstName: Zweite
+    lastName: Test
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: anchor
+    firstName: Anker
+    lastName: Test
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+relationships: []`
+    stubYamlOpen(filterYaml, 'filter.yaml')
+
     render(<App />)
-
-    const addPerson = async (firstName: string) => {
-      fireEvent.click(screen.getByRole('button', { name: 'Person anlegen' }))
-      fireEvent.change(screen.getByLabelText('Vorname'), { target: { value: firstName } })
-      fireEvent.change(screen.getByLabelText('Nachname'), { target: { value: 'Test' } })
-      fireEvent.click(screen.getByRole('button', { name: 'Person speichern' }))
-      await screen.findByText(`${firstName} Test`)
-    }
-
-    await addPerson('Erste')
-    await addPerson('Zweite')
-    await addPerson('Anker')
+    fireEvent.click(screen.getByRole('button', { name: 'Öffnen' }))
+    await waitFor(() => expect(screen.getByText('Geöffnet: filter.yaml')).toBeVisible())
+    fireEvent.click(await screen.findByText('Anker Test'))
 
     fireEvent.click(screen.getByLabelText('Lokale Ansicht'))
     fireEvent.change(screen.getByLabelText('Distanz'), { target: { value: '0' } })
@@ -429,14 +454,14 @@ describe('application workbench', () => {
     expect(screen.queryByText('Zweite Test')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText('Lokale Ansicht'))
-    fireEvent.click(screen.getByLabelText('Nur Blutsverwandte'))
+    fireEvent.click(screen.getByRole('button', { name: 'Nur Blutsverwandte' }))
 
     expect(screen.getByText('1 von 3 sichtbar')).toBeInTheDocument()
     expect(screen.getByText('Anker Test')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Person bearbeiten' })).toBeInTheDocument()
   })
 
-  it('offers alternative bloodline filters and keeps them anchor-dependent', async () => {
+  it('offers bloodline actions that apply only on explicit clicks', async () => {
     const filterYaml = `schemaVersion: 1
 persons:
   - id: anchor
@@ -446,47 +471,219 @@ persons:
     birthYear: null
     deathYear: null
     position: null
-  - id: other-a
+  - id: ancestor
+    firstName: Ancestor
+    lastName: Test
+    gender: woman
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: ancestor-partner
+    firstName: Ancestor
+    lastName: Partner
+    gender: man
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: other
     firstName: Other
-    lastName: A
+    lastName: Test
     gender: null
     birthYear: null
     deathYear: null
     position: null
-  - id: other-b
-    firstName: Other
-    lastName: B
-    gender: null
-    birthYear: null
-    deathYear: null
-    position: null
-relationships: []`
+relationships:
+  - id: ancestor-anchor
+    type: parent-child
+    fromId: ancestor
+    toId: anchor
+    status: explicit
+    sourceUrl: null
+  - id: ancestor-marriage
+    type: marriage
+    fromId: ancestor
+    toId: ancestor-partner
+    status: explicit
+    sourceUrl: null`
     stubYamlOpen(filterYaml, 'filters.yaml')
 
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Öffnen' }))
     await waitFor(() => expect(screen.getByText('Geöffnet: filters.yaml')).toBeVisible())
 
-    const bloodFilter = screen.getByLabelText('Nur Blutsverwandte')
-    const directFilter = screen.getByLabelText('Direkte Vorfahren')
-    const extendedFilter = screen.getByLabelText('Erweiterte direkte Vorfahren')
-    expect(bloodFilter).toHaveAttribute('type', 'radio')
-    expect(directFilter).toHaveAttribute('type', 'radio')
-    expect(extendedFilter).toHaveAttribute('type', 'radio')
+    const allPeople = screen.getByRole('button', { name: 'Alle Personen' })
+    const bloodFilter = screen.getByRole('button', { name: 'Nur Blutsverwandte' })
+    const directFilter = screen.getByRole('button', { name: 'Direkte Vorfahren' })
+    const extendedFilter = screen.getByRole('button', { name: 'Erweiterte direkte Vorfahren' })
+    const descendantsFilter = screen.getByRole('button', { name: 'Nachkommen' })
+    const extendedDescendantsFilter = screen.getByRole('button', { name: 'Erweiterte Nachkommen' })
+    expect(screen.queryAllByRole('radio')).toHaveLength(0)
+    expect(allPeople).toHaveAttribute('type', 'button')
+    expect(bloodFilter).toHaveAttribute('type', 'button')
+    expect(directFilter).toHaveAttribute('type', 'button')
+    expect(extendedFilter).toHaveAttribute('type', 'button')
+    expect(descendantsFilter).toHaveAttribute('type', 'button')
+    expect(extendedDescendantsFilter).toHaveAttribute('type', 'button')
+    expect(bloodFilter).not.toHaveAttribute('aria-pressed', 'true')
 
     fireEvent.click(directFilter)
-    expect(screen.getByText('3 von 3 sichtbar')).toBeVisible()
-    expect(directFilter).toBeChecked()
-    expect(bloodFilter).not.toBeChecked()
-    expect(extendedFilter).not.toBeChecked()
+    expect(screen.getByText('4 Personen')).toBeVisible()
 
     fireEvent.click(screen.getByText('Anchor Test'))
-    expect(screen.getByText('1 von 3 sichtbar')).toBeVisible()
+    fireEvent.click(directFilter)
+    expect(screen.getByText('3 von 4 sichtbar')).toBeVisible()
+    expect(screen.getByLabelText('Vorname')).toHaveValue('Anchor')
 
-    fireEvent.click(extendedFilter)
-    expect(extendedFilter).toBeChecked()
-    expect(directFilter).not.toBeChecked()
-    expect(screen.getByText('1 von 3 sichtbar')).toBeVisible()
+    fireEvent.click(screen.getByText('Ancestor Partner'))
+    expect(screen.getByText('3 von 4 sichtbar')).toBeVisible()
+    expect(screen.getByLabelText('Vorname')).toHaveValue('Ancestor')
+
+    fireEvent.click(directFilter)
+    expect(screen.getByText('1 von 4 sichtbar')).toBeVisible()
+    expect(screen.getByText('Ancestor Partner')).toBeVisible()
+
+    fireEvent.click(allPeople)
+    expect(screen.getByText('4 Personen')).toBeVisible()
+  })
+
+  it('applies descendant actions only to the person selected at click time', async () => {
+    const filterYaml = `schemaVersion: 1
+persons:
+  - id: anchor
+    firstName: Anchor
+    lastName: Person
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: child
+    firstName: Child
+    lastName: Person
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: grandchild
+    firstName: Grandchild
+    lastName: Person
+    gender: woman
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: grandchild-partner
+    firstName: Partner
+    lastName: Person
+    gender: man
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: partner-child
+    firstName: Partner
+    lastName: Child
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: separate
+    firstName: Separate
+    lastName: Person
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+relationships:
+  - id: anchor-child
+    type: parent-child
+    fromId: anchor
+    toId: child
+    status: explicit
+    sourceUrl: null
+  - id: child-grandchild
+    type: parent-child
+    fromId: child
+    toId: grandchild
+    status: explicit
+    sourceUrl: null
+  - id: grandchild-partner-link
+    type: marriage
+    fromId: grandchild
+    toId: grandchild-partner
+    status: explicit
+    sourceUrl: null
+  - id: partner-child-link
+    type: parent-child
+    fromId: grandchild-partner
+    toId: partner-child
+    status: explicit
+    sourceUrl: null`
+    stubYamlOpen(filterYaml, 'descendants.yaml')
+
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Öffnen' }))
+    await waitFor(() => expect(screen.getByText('Geöffnet: descendants.yaml')).toBeVisible())
+
+    const descendantsFilter = screen.getByRole('button', { name: 'Nachkommen' })
+    const extendedDescendantsFilter = screen.getByRole('button', { name: 'Erweiterte Nachkommen' })
+    fireEvent.click(screen.getByText('Anchor Person'))
+    fireEvent.click(descendantsFilter)
+
+    expect(screen.getByText('4 von 6 sichtbar')).toBeVisible()
+    expect(screen.getByText('Child Person')).toBeVisible()
+    expect(screen.getByText('Grandchild Person')).toBeVisible()
+    expect(screen.getByText('Partner Child')).toBeVisible()
+    expect(screen.queryByText('Partner Person')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Child Person'))
+    expect(screen.getByText('4 von 6 sichtbar')).toBeVisible()
+    expect(screen.getByLabelText('Vorname')).toHaveValue('Child')
+
+    fireEvent.click(descendantsFilter)
+    expect(screen.getByText('3 von 6 sichtbar')).toBeVisible()
+    expect(screen.queryByText('Anchor Person')).not.toBeInTheDocument()
+
+    fireEvent.click(extendedDescendantsFilter)
+    expect(screen.getByText('4 von 6 sichtbar')).toBeVisible()
+    expect(screen.getByText('Partner Person')).toBeVisible()
+    expect(screen.getByText('Partner Child')).toBeVisible()
+  })
+
+  it('keeps a newly created person visible until the YAML is saved', async () => {
+    const filterYaml = `schemaVersion: 1
+persons:
+  - id: anchor
+    firstName: Anchor
+    lastName: Test
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+relationships: []`
+    const write = vi.fn().mockResolvedValue(undefined)
+    const close = vi.fn().mockResolvedValue(undefined)
+    stubYamlOpen(filterYaml, 'filters.yaml')
+    vi.stubGlobal('showSaveFilePicker', vi.fn().mockResolvedValue({
+      createWritable: vi.fn().mockResolvedValue({ write, close }),
+    }))
+
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Öffnen' }))
+    await waitFor(() => expect(screen.getByText('Geöffnet: filters.yaml')).toBeVisible())
+
+    fireEvent.click(screen.getByText('Anchor Test'))
+    fireEvent.click(screen.getByRole('button', { name: 'Nur Blutsverwandte' }))
+    expect(screen.getByText('1 von 1 sichtbar')).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Person anlegen' }))
+    fireEvent.change(screen.getByLabelText('Vorname'), { target: { value: 'Neu' } })
+    fireEvent.change(screen.getByLabelText('Nachname'), { target: { value: 'Person' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Person speichern' }))
+
+    expect(await screen.findByText('Neu Person')).toBeVisible()
+    expect(screen.getByText('2 von 2 sichtbar')).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+    await waitFor(() => expect(write).toHaveBeenCalledOnce())
+    await waitFor(() => expect(screen.queryByText('Neu Person')).not.toBeInTheDocument())
   })
 
   it('merges the selected person with another node after an irreversible confirmation', async () => {

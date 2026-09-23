@@ -10,13 +10,20 @@ export interface DuplicatePersonPair {
   priority: DuplicatePriority
 }
 
-export type BloodlineMode = 'blood' | 'direct-ancestors' | 'extended-direct-ancestors'
+export type BloodlineMode =
+  | 'blood'
+  | 'direct-ancestors'
+  | 'extended-direct-ancestors'
+  | 'descendants'
+  | 'extended-descendants'
 
 export interface GraphViewOptions {
   anchorPersonId?: string | null
+  bloodlineAnchorPersonId?: string | null
   distance?: number | null
   bloodlineMode?: BloodlineMode | null
   hideLeaves?: boolean
+  unfilteredPersonIds?: readonly string[]
 }
 
 const personIdsFor = (document: FamilyTreeDocument) =>
@@ -149,6 +156,53 @@ const bloodRelativeIds = (
   return relatives
 }
 
+const descendantIds = (
+  indexes: FamilyIndexes,
+  anchorPersonId: string,
+) => {
+  const descendants = new Set<string>([anchorPersonId])
+  const pending = [anchorPersonId]
+
+  while (pending.length > 0) {
+    const currentId = pending.shift()
+    if (!currentId) continue
+
+    for (const childId of indexes.childrenByParent.get(currentId) ?? []) {
+      if (descendants.has(childId)) continue
+      descendants.add(childId)
+      pending.push(childId)
+    }
+  }
+
+  return descendants
+}
+
+const extendedDescendantIds = (
+  indexes: FamilyIndexes,
+  anchorPersonId: string,
+) => {
+  const descendants = descendantIds(indexes, anchorPersonId)
+  const included = new Set(descendants)
+  const descendantPartners = new Set<string>()
+
+  descendants.forEach((descendantId) => {
+    if (descendantId === anchorPersonId) return
+
+    for (const partnerId of indexes.partnersByPerson.get(descendantId) ?? []) {
+      descendantPartners.add(partnerId)
+    }
+  })
+
+  descendantPartners.forEach((partnerId) => {
+    included.add(partnerId)
+    for (const childId of indexes.childrenByParent.get(partnerId) ?? []) {
+      included.add(childId)
+    }
+  })
+
+  return included
+}
+
 const directAncestorIds = (
   indexes: FamilyIndexes,
   anchorPersonId: string,
@@ -192,6 +246,10 @@ const bloodlineIds = (
 ) => {
   const indexes = familyIndexesFor(document)
   if (mode === 'blood') return bloodRelativeIds(indexes, anchorPersonId)
+  if (mode === 'descendants') return descendantIds(indexes, anchorPersonId)
+  if (mode === 'extended-descendants') {
+    return extendedDescendantIds(indexes, anchorPersonId)
+  }
 
   return directAncestorIds(
     indexes,
@@ -220,8 +278,10 @@ export const filterFamilyTreeDocument = (
   document: FamilyTreeDocument,
   options: GraphViewOptions = {},
 ): FamilyTreeDocument => {
-  const visiblePersonIds = personIdsFor(document)
+  const allPersonIds = personIdsFor(document)
+  const visiblePersonIds = new Set(allPersonIds)
   const anchorPersonId = options.anchorPersonId ?? null
+  const bloodlineAnchorPersonId = options.bloodlineAnchorPersonId ?? anchorPersonId
   const distance = normalizedDistance(options.distance)
 
   if (anchorPersonId && distance !== null && visiblePersonIds.has(anchorPersonId)) {
@@ -231,10 +291,14 @@ export const filterFamilyTreeDocument = (
     )
   }
 
-  if (options.bloodlineMode && anchorPersonId && visiblePersonIds.has(anchorPersonId)) {
+  if (
+    options.bloodlineMode &&
+    bloodlineAnchorPersonId &&
+    visiblePersonIds.has(bloodlineAnchorPersonId)
+  ) {
     intersectIds(
       visiblePersonIds,
-      bloodlineIds(document, anchorPersonId, options.bloodlineMode),
+      bloodlineIds(document, bloodlineAnchorPersonId, options.bloodlineMode),
     )
   }
 
@@ -245,6 +309,12 @@ export const filterFamilyTreeDocument = (
         .map((relationship) => relationship.fromId),
     )
     intersectIds(visiblePersonIds, parentIds)
+  }
+
+  for (const personId of options.unfilteredPersonIds ?? []) {
+    if (allPersonIds.has(personId)) {
+      visiblePersonIds.add(personId)
+    }
   }
 
   return {

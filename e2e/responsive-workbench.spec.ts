@@ -50,6 +50,53 @@ test.describe('responsive Workbench', () => {
     }
   })
 
+  test('hält alle Personenaktionen im schmalen Inspektor erreichbar', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('/')
+
+    await page.getByRole('button', { name: 'Person anlegen' }).click()
+    await page.getByLabel('Vorname').fill('Anna')
+    await page.getByLabel('Nachname').fill('Beispiel')
+    await page.getByRole('button', { name: 'Person speichern' }).click()
+
+    const mergeButton = page.getByRole('button', { name: 'Mit anderer Person fusionieren' })
+    await expect(mergeButton).toBeVisible()
+
+    const actionLayout = await page.locator('.form-actions').evaluate((element) => {
+      const container = element.getBoundingClientRect()
+      const buttons = Array.from(element.querySelectorAll('button')).map((button) => {
+        const box = button.getBoundingClientRect()
+        return {
+          bottom: box.bottom,
+          left: box.left,
+          right: box.right,
+          top: box.top,
+        }
+      })
+
+      return {
+        container: {
+          bottom: container.bottom,
+          left: container.left,
+          right: container.right,
+          top: container.top,
+        },
+        buttons,
+      }
+    })
+
+    expect(actionLayout.buttons).toHaveLength(4)
+    for (const button of actionLayout.buttons) {
+      expect(button.left).toBeGreaterThanOrEqual(actionLayout.container.left)
+      expect(button.right).toBeLessThanOrEqual(actionLayout.container.right)
+      expect(button.top).toBeGreaterThanOrEqual(actionLayout.container.top)
+      expect(button.bottom).toBeLessThanOrEqual(actionLayout.container.bottom)
+    }
+
+    await mergeButton.click()
+    await expect(page.getByRole('status')).toContainText('Wähle die zweite Person für die Fusion aus.')
+  })
+
   test('hält Toolbar, Graph und Inspektor auf schmalen Viewports erreichbar', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto('/')

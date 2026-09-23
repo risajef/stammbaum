@@ -42,6 +42,7 @@ const documentFixture: FamilyTreeDocument = {
       birthYear: 1834,
       deathYear: 1901,
       position: { x: 100, y: 40 },
+      comment: 'Personennotiz',
     },
     {
       id: 'man-1',
@@ -71,6 +72,7 @@ const documentFixture: FamilyTreeDocument = {
       startDate: '1880-05',
       status: 'explicit',
       sourceUrl: null,
+      comment: 'Ehenotiz',
     },
     {
       id: 'parent-child-1',
@@ -300,6 +302,15 @@ describe('family tree graph projection', () => {
         years: '1834 - 1901',
       },
     })
+  })
+
+  it('exposes person and relationship comments as hover titles', () => {
+    const projection = projectFamilyTree(documentFixture)
+    const person = projection.nodes.find((node) => node.id === 'woman-1')
+    const marriage = projection.edges.find((edge) => edge.id === 'marriage-1')
+
+    expect(person?.data).toMatchObject({ comment: 'Personennotiz' })
+    expect(marriage?.domAttributes).toEqual({ title: 'Ehenotiz' })
   })
 
   it('recomputes filtered positions instead of reusing positions from before a document change', () => {

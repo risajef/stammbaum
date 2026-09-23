@@ -83,6 +83,11 @@ const proOptions = { hideAttribution: true }
 type ConnectionDraft = RelationshipConnectionDraft
 type ViewMode = 'overview' | 'force'
 
+interface AppliedBloodlineFilter {
+  mode: BloodlineMode
+  anchorPersonId: string
+}
+
 const createEmptyOcrImportState = (): OcrImportViewState => ({
   status: 'idle',
   backendStatus: 'unknown',
@@ -203,8 +208,12 @@ function App() {
   const [isLocalView, setIsLocalView] = useState(false)
   const [localAnchorId, setLocalAnchorId] = useState<string | null>(null)
   const [localDistance, setLocalDistance] = useState(1)
-  const [bloodlineMode, setBloodlineMode] = useState<BloodlineMode | null>(null)
+  const [appliedBloodlineFilter, setAppliedBloodlineFilter] =
+    useState<AppliedBloodlineFilter | null>(null)
   const [hideLeaves, setHideLeaves] = useState(false)
+  const [unfilteredPersonIds, setUnfilteredPersonIds] = useState<Set<string>>(
+    () => new Set(),
+  )
   const [ocrImportState, setOcrImportState] = useState<OcrImportViewState>(
     createEmptyOcrImportState,
   )
@@ -215,20 +224,26 @@ function App() {
   const [pendingOcrSuggestion, setPendingOcrSuggestion] = useState<OcrSuggestion | null>(null)
   const searchCursorRef = useRef(-1)
   const flowSurfaceRef = useRef<HTMLDivElement>(null)
-  const viewAnchorId = isLocalView
-    ? localAnchorId
-    : bloodlineMode && selection?.type === 'person'
-      ? selection.id
-      : null
+  const bloodlineMode = appliedBloodlineFilter?.mode ?? null
 
   const viewOptions = useMemo<GraphViewOptions>(
     () => ({
-      anchorPersonId: viewAnchorId,
+      anchorPersonId: isLocalView ? localAnchorId : null,
+      bloodlineAnchorPersonId: appliedBloodlineFilter?.anchorPersonId ?? null,
       distance: isLocalView ? localDistance : null,
       bloodlineMode,
       hideLeaves,
+      unfilteredPersonIds: [...unfilteredPersonIds].sort(),
     }),
-    [bloodlineMode, hideLeaves, isLocalView, localDistance, viewAnchorId],
+    [
+      appliedBloodlineFilter,
+      bloodlineMode,
+      hideLeaves,
+      isLocalView,
+      localAnchorId,
+      localDistance,
+      unfilteredPersonIds,
+    ],
   )
   const viewOptionsKey = JSON.stringify(viewOptions)
   const previousViewOptionsKey = useRef<string | null>(null)
@@ -435,6 +450,13 @@ function App() {
     }
 
     setDocument(result.value)
+    setUnfilteredPersonIds((current) => {
+      if (!current.has(personId)) return current
+
+      const next = new Set(current)
+      next.delete(personId)
+      return next
+    })
     setActiveChildGroups([])
     setTemporaryPositions(new Map())
     setForcePositions(new Map())
@@ -472,7 +494,7 @@ function App() {
       setIsLocalView(false)
       setLocalAnchorId(null)
       setLocalDistance(1)
-      setBloodlineMode(null)
+      setAppliedBloodlineFilter(null)
       setHideLeaves(false)
     }
 
@@ -525,6 +547,19 @@ function App() {
     setLocalAnchorId(enabled && selection?.type === 'person' ? selection.id : null)
   }
 
+  const handleBloodlineModeClick = (mode: BloodlineMode | null) => {
+    if (mode === null) {
+      setAppliedBloodlineFilter(null)
+      return
+    }
+
+    if (selection?.type !== 'person') {
+      return
+    }
+
+    setAppliedBloodlineFilter({ mode, anchorPersonId: selection.id })
+  }
+
   const handleViewModeChange = (nextMode: ViewMode) => {
     setViewMode(nextMode)
     if (nextMode === 'force') {
@@ -551,7 +586,7 @@ function App() {
     setIsLocalView(false)
     setLocalAnchorId(null)
     setLocalDistance(1)
-    setBloodlineMode(null)
+    setAppliedBloodlineFilter(null)
     setHideLeaves(false)
   }
 
@@ -603,6 +638,13 @@ function App() {
     )
 
     setDocument(nextDocument)
+    if (newPerson) {
+      setUnfilteredPersonIds((current) => {
+        const next = new Set(current)
+        next.add(newPerson.id)
+        return next
+      })
+    }
     setActiveChildGroups([])
     setOcrSuggestions((current) => rejectOcrSuggestion(current, suggestion.id))
     setPendingOcrSuggestion(null)
@@ -649,6 +691,13 @@ function App() {
       : new Map<string, Position>()
 
     setDocument(nextDocument)
+    if (isNewPerson && savedPersonId) {
+      setUnfilteredPersonIds((current) => {
+        const next = new Set(current)
+        next.add(savedPersonId)
+        return next
+      })
+    }
     setActiveChildGroups([])
     setTemporaryPositions(positionsToKeep)
     setForcePositions(new Map())
@@ -685,6 +734,13 @@ function App() {
     }
 
     setDocument(result.value)
+    setUnfilteredPersonIds((current) => {
+      if (!current.has(selectedPerson.id)) return current
+
+      const next = new Set(current)
+      next.delete(selectedPerson.id)
+      return next
+    })
     setActiveChildGroups([])
     setTemporaryPositions(new Map())
     setForcePositions(new Map())
@@ -918,6 +974,7 @@ function App() {
     }
 
     setDocument(createEmptyDocument())
+    setUnfilteredPersonIds(new Set())
     setActiveChildGroups([])
     setTemporaryPositions(new Map())
     setForcePositions(new Map())
@@ -944,6 +1001,7 @@ function App() {
       }
 
       setDocument(synchronizeInferredRelationships(result.value))
+      setUnfilteredPersonIds(new Set())
       setActiveChildGroups([])
       setTemporaryPositions(new Map())
       setForcePositions(new Map())
@@ -970,6 +1028,7 @@ function App() {
         ? fileName
         : `${fileName}.yaml`
       await filePort.save(serializeFamilyTreeYaml(document), outputFileName)
+      setUnfilteredPersonIds(new Set())
       setFileName(outputFileName)
       setIsDirty(false)
       setSaveState(`Gespeichert: ${outputFileName}`)
@@ -1142,46 +1201,48 @@ function App() {
               </label>
               <div aria-label="Blutlinienansicht" className="view-filter-group" role="group">
                 <span className="view-filter-group-label">Blutlinie</span>
-                <label className="view-toggle">
-                  <input
-                    aria-label="Alle Personen"
-                    checked={bloodlineMode === null}
-                    name="bloodline-mode"
-                    type="radio"
-                    onChange={() => setBloodlineMode(null)}
-                  />
-                  <span>Alle Personen</span>
-                </label>
-                <label className="view-toggle">
-                  <input
-                    aria-label="Nur Blutsverwandte"
-                    checked={bloodlineMode === 'blood'}
-                    name="bloodline-mode"
-                    type="radio"
-                    onChange={() => setBloodlineMode('blood')}
-                  />
-                  <span>Nur Blutsverwandte</span>
-                </label>
-                <label className="view-toggle">
-                  <input
-                    aria-label="Direkte Vorfahren"
-                    checked={bloodlineMode === 'direct-ancestors'}
-                    name="bloodline-mode"
-                    type="radio"
-                    onChange={() => setBloodlineMode('direct-ancestors')}
-                  />
-                  <span>Direkte Vorfahren</span>
-                </label>
-                <label className="view-toggle">
-                  <input
-                    aria-label="Erweiterte direkte Vorfahren"
-                    checked={bloodlineMode === 'extended-direct-ancestors'}
-                    name="bloodline-mode"
-                    type="radio"
-                    onChange={() => setBloodlineMode('extended-direct-ancestors')}
-                  />
-                  <span>Erweiterte direkte Vorfahren</span>
-                </label>
+                <button
+                  className="view-toggle view-filter-button"
+                  type="button"
+                  onClick={() => handleBloodlineModeClick(null)}
+                >
+                  Alle Personen
+                </button>
+                <button
+                  className="view-toggle view-filter-button"
+                  type="button"
+                  onClick={() => handleBloodlineModeClick('blood')}
+                >
+                  Nur Blutsverwandte
+                </button>
+                <button
+                  className="view-toggle view-filter-button"
+                  type="button"
+                  onClick={() => handleBloodlineModeClick('direct-ancestors')}
+                >
+                  Direkte Vorfahren
+                </button>
+                <button
+                  className="view-toggle view-filter-button"
+                  type="button"
+                  onClick={() => handleBloodlineModeClick('extended-direct-ancestors')}
+                >
+                  Erweiterte direkte Vorfahren
+                </button>
+                <button
+                  className="view-toggle view-filter-button"
+                  type="button"
+                  onClick={() => handleBloodlineModeClick('descendants')}
+                >
+                  Nachkommen
+                </button>
+                <button
+                  className="view-toggle view-filter-button"
+                  type="button"
+                  onClick={() => handleBloodlineModeClick('extended-descendants')}
+                >
+                  Erweiterte Nachkommen
+                </button>
               </div>
               <label className="view-toggle">
                 <input

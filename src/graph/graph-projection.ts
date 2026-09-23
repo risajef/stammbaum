@@ -24,6 +24,7 @@ export type PersonNodeData = Record<string, unknown> & {
   isMinor: boolean
   isCommonChild: boolean
   selected: boolean
+  comment: string | null
 }
 
 export type ChildGroupNodeData = Record<string, unknown> & {
@@ -41,6 +42,7 @@ export type RelationshipEdgeData = Record<string, unknown> & {
   sourceUrl: Relationship['sourceUrl']
   origin: NonNullable<Relationship['origin']>
   originLabel: string
+  comment: string | null
 }
 
 export type GraphSelection =
@@ -164,7 +166,8 @@ const hasActiveViewFilter = (viewOptions: GraphViewOptions) => {
     viewOptions.distance !== undefined,
   )
   const hasAnchoredBloodline = Boolean(
-    viewOptions.anchorPersonId && viewOptions.bloodlineMode,
+    (viewOptions.bloodlineAnchorPersonId ?? viewOptions.anchorPersonId) &&
+    viewOptions.bloodlineMode,
   )
 
   return Boolean(viewOptions.hideLeaves || hasAnchoredDistance || hasAnchoredBloodline)
@@ -820,6 +823,7 @@ const projectPerson = (
     isMinor: isMinor(person),
     isCommonChild,
     selected: selection?.type === 'person' && selection.id === person.id,
+    comment: person.comment ?? null,
   },
 })
 
@@ -853,6 +857,7 @@ const projectRelationship = (
   const isInferred = relationship.status === 'inferred'
   const isParentChild = relationship.type === 'parent-child'
   const selected = selection?.type === 'relationship' && selection.id === relationship.id
+  const comment = relationship.comment?.trim() || undefined
   const edgeColor = selected
     ? selectedEdgeColor
     : origin === 'ocr-suggestion'
@@ -883,6 +888,9 @@ const projectRelationship = (
     labelBgStyle: { fill: '#fffdf8', fillOpacity: 0.94, stroke: edgeColor },
     labelBgPadding: [4, 2],
     labelBgBorderRadius: 2,
+    domAttributes: comment
+      ? ({ title: comment } as unknown as NonNullable<Edge<RelationshipEdgeData>['domAttributes']>)
+      : undefined,
     style: {
       stroke: edgeColor,
       strokeWidth: selected ? 4 : 2.2,
@@ -895,6 +903,7 @@ const projectRelationship = (
       sourceUrl: relationship.sourceUrl,
       origin,
       originLabel: relationshipOriginLabel(origin),
+      comment: relationship.comment ?? null,
     },
     ...(isParentChild
       ? {

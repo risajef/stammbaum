@@ -3,6 +3,7 @@ firstNameVariants:
   - [Jacob, Jakob]
   - [Elisabeth, Eisabetha]
   - [Rahel, Rachel]
+  - [Rahel, Rachael]
   - [Adelgund, Adelgunde]
   - [Adelgund, Adelgunda]
   - [Elisabeth, Eisabethe]
@@ -10,3 +11,8 @@ firstNameVariants:
 lastNameVariants:
   - [Schelling, Schilling]
   - [Weber, Wäber]
+  - [Wäber, Wäberin]
+  - [Weber, Weberin]
+  - [Storrer, Storzer]
+  - [Storzer, Storrerin]
+  - [Storrerin, Storrerin]

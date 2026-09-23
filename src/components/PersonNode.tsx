@@ -23,7 +23,7 @@ function PersonNode({ data, selected }: NodeProps<PersonGraphNode>) {
   ].filter(Boolean).join(' ')
 
   return (
-    <div className={nodeClasses}>
+    <div className={nodeClasses} title={data.comment ?? undefined}>
       <Handle
         className="person-handle"
         type="target"

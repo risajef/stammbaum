@@ -1056,11 +1056,15 @@ button {
 }
 
 .form-actions {
-  display: flex;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
   margin-top: auto;
   padding-top: 12px;
+}
+
+.form-actions > button {
+  min-width: 0;
 }
 
 .secondary-action,
@@ -1086,7 +1090,7 @@ button {
 }
 
 .danger-action {
-  margin-right: auto;
+  margin-right: 0;
   border: 1px solid rgba(168, 77, 57, 0.3);
   background: transparent;
   color: var(--coral-dark);
