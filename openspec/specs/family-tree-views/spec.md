@@ -36,12 +36,12 @@ Das System MUST eine Suche nach Teiltreffern in Vor- und Nachnamen der aktuell s
 
 ### Requirement: Ansichtsfilter veraendern nicht die Grunddaten
 
-Das System MUST alle Such- und Ansichtsfilter als reine View-Zustaende behandeln. Das vollstaendige Dokument, seine Personen, Beziehungen, IDs und exportierten YAML-Daten MUESSEN unveraendert bleiben. Neu angelegte Personen MUESSEN bis zum erfolgreichen YAML-Speichern unabhaengig von aktiven Ansichtsfiltern sichtbar bleiben; nach diesem Speichern MUESSEN sie wie alle anderen Personen den aktiven Filtern unterliegen. Die sichtbaren Personen und Beziehungen MUESSEN anschliessend mit demselben automatischen Layoutalgorithmus wie die Vollansicht angeordnet werden; eine Kante darf nur angezeigt werden, wenn beide Endpunkte sichtbar sind.
+Das System MUST alle Such- und Ansichtsfilter als reine View-Zustaende behandeln. Das vollstaendige Dokument, seine Personen, Beziehungen und IDs MUESSEN unveraendert bleiben. Der normale Vollbaum-YAML-Export MUSS weiterhin alle Grunddaten ohne View-Einstellungen enthalten; der separate Export der aktuell sichtbaren Filteransicht ist in der Capability `filtered-family-tree-export` definiert. Neu angelegte Personen MUESSEN bis zum erfolgreichen YAML-Speichern unabhaengig von aktiven Ansichtsfiltern sichtbar bleiben; nach diesem Speichern MUESSEN sie wie alle anderen Personen den aktiven Filtern unterliegen. Die sichtbaren Personen und Beziehungen MUESSEN anschliessend mit demselben automatischen Layoutalgorithmus wie die Vollansicht angeordnet werden; eine Kante darf nur angezeigt werden, wenn beide Endpunkte sichtbar sind.
 
-#### Scenario: Aktive Filter veraendern den exportierten Stammbaum nicht
+#### Scenario: Aktive Filter veraendern den normalen Vollbaumexport nicht
 
 - **GIVEN** ein Stammbaum wird mit einer beliebigen Filterkombination angezeigt
-- **WHEN** die Benutzerin den Stammbaum exportiert
+- **WHEN** die Benutzerin den normalen Stammbaum mit „Speichern“ exportiert
 - **THEN** enthaelt der Export weiterhin alle Grunddaten und keine View-Einstellungen
 
 #### Scenario: Neu angelegte Personen bleiben bis zum Speichern sichtbar
@@ -317,13 +317,13 @@ Das System MUST eine Ansicht „Erweiterte direkte Vorfahren“ anbieten. Sie MU
 
 ### Requirement: Vorfahrenansichten sind auswählbare, nicht persistierte Filter
 
-Das System MUST die Aktionen „Alle Personen“, „Nur Blutsverwandte“, „Direkte Vorfahren“, „Erweiterte direkte Vorfahren“, „Nachkommen“ und „Erweiterte Nachkommen“ als Buttons anbieten. Die fünf personenbezogenen Modi MUESSEN beim Klick die zu diesem Zeitpunkt ausgewaehlte Person als Anker verwenden. Ein erneuter Klick auf denselben Button MUSS den Filter erneut mit der dann ausgewaehlten Person berechnen. Die Buttons DÜRFEN keinen dauerhaften Auswahl-, Checked- oder Radiozustand anzeigen. Das Auswaehlen einer anderen sichtbaren Person DARF die bestehende Filterprojektion nicht veraendern; es MUSS nur den Inspektor auf die neue Person umstellen. Ohne ausgewaehlte Person MUESSEN die fünf personenbezogenen Aktionen die Ansicht unveraendert lassen. „Alle Personen“ MUSS den Blutlinienmodus jederzeit zuruecksetzen, ohne andere aktive Ansichtsfilter zu veraendern. Die Modi MUESSEN mit lokaler Ansicht und Leaf-Filter kombinierbar sein; deren bestehende Schnittmengenlogik bleibt erhalten. Alle Modi MUESSEN reine View-Zustaende bleiben und duerfen weder das Dokument noch den YAML-Export veraendern.
+Das System MUST die Aktionen „Alle Personen“, „Nur Blutsverwandte“, „Direkte Vorfahren“, „Erweiterte direkte Vorfahren“, „Nachkommen“, „Erweiterte Nachkommen“, „Direkte Vor und Nachfahren“ und „Erweiterte direkte Vor und Nachfahren“ als Buttons anbieten. Die sieben personenbezogenen Modi MUESSEN beim Klick die zu diesem Zeitpunkt ausgewaehlte Person als Anker verwenden. Ein erneuter Klick auf denselben Button MUSS den Filter erneut mit der dann ausgewaehlten Person berechnen. Die Buttons DÜRFEN keinen dauerhaften Auswahl-, Checked- oder Radiozustand anzeigen. Das Auswaehlen einer anderen sichtbaren Person DARF die bestehende Filterprojektion nicht veraendern; es MUSS nur den Inspektor auf die neue Person umstellen. Ohne ausgewaehlte Person MUESSEN die sieben personenbezogenen Aktionen die Ansicht unveraendert lassen. „Alle Personen“ MUSS den Blutlinienmodus jederzeit zuruecksetzen, ohne andere aktive Ansichtsfilter zu veraendern. Die Modi MUESSEN mit lokaler Ansicht und Leaf-Filter kombinierbar sein; deren bestehende Schnittmengenlogik bleibt erhalten. Alle Modi MUESSEN reine View-Zustaende bleiben und duerfen weder das Dokument noch den normalen Vollbaum-YAML-Export veraendern.
 
 #### Scenario: Die Filteroptionen sind ausloesende Buttons
 
 - **GIVEN** die Ansichtsfilter werden angezeigt
 - **WHEN** die Benutzerin die Blutlinien- und Nachkommenfilter betrachtet
-- **THEN** sind „Alle Personen“, „Nur Blutsverwandte“, „Direkte Vorfahren“, „Erweiterte direkte Vorfahren“, „Nachkommen“ und „Erweiterte Nachkommen“ als Buttons und nicht als Radio-Selectoren vorhanden
+- **THEN** sind „Alle Personen“, „Nur Blutsverwandte“, „Direkte Vorfahren“, „Erweiterte direkte Vorfahren“, „Nachkommen“, „Erweiterte Nachkommen“, „Direkte Vor und Nachfahren“ und „Erweiterte direkte Vor und Nachfahren“ als Buttons und nicht als Radio-Selectoren vorhanden
 - **AND** kein Button zeigt einen dauerhaften Checked- oder Aktivzustand an
 
 #### Scenario: Ein Blutlinienbutton filtert die aktuell ausgewaehlte Person
@@ -381,12 +381,54 @@ Das System MUST die Aktionen „Alle Personen“, „Nur Blutsverwandte“, „D
 #### Scenario: Filter veraendern keine gespeicherten Daten
 
 - **GIVEN** ein Vorfahren- oder Nachkommenmodus ist aktiv und die Ansicht ist gefiltert
-- **WHEN** der Stammbaum exportiert wird
-- **THEN** enthaelt der Export weiterhin alle Personen und Beziehungen ohne Ansichtsmodus
+- **WHEN** die Benutzerin den Stammbaum mit „Speichern“ sichert
+- **THEN** enthaelt der normale Export weiterhin alle Personen und Beziehungen ohne Ansichtsmodus
+
+### Requirement: Kombinierte direkte Vor- und Nachfahrenfilter
+
+Das System MUST einen Filter „Direkte Vor und Nachfahren“ anbieten. Er MUSS die Vereinigung der bestehenden Filter „Direkte Vorfahren“ und „Nachkommen“ mit demselben Anker bilden: Alle direkten Vorfahren des Ankers samt den im direkten Vorfahrenfilter eingeschlossenen Partnern sowie alle direkten Nachkommen des Ankers und deren direkte Partner werden angezeigt. Der direkte Partner des Ankers MUSS ebenfalls angezeigt werden. Familienlinien, die ausschliesslich über einen dieser Nachkommenpartner oder den Ankerpartner erreichbar sind, MUESSEN in diesem direkten kombinierten Filter ausgeschlossen bleiben, sofern sie nicht durch eine andere aktive Filterregel sichtbar werden. Die resultierende sichtbare Teilmenge MUSS automatisch mit dem bestehenden Layoutalgorithmus angeordnet werden; ein eigener Sanduhr-Layoutmodus ist nicht erforderlich.
+
+#### Scenario: Direkte Vor- und Nachfahren zeigen beide Richtungen entlang direkter Linien
+
+- **GIVEN** ein Anker hat Eltern, Grosseltern, Kinder und Enkel sowie einen Partner eines direkten Vorfahren
+- **WHEN** der Filter „Direkte Vor und Nachfahren“ angewendet wird
+- **THEN** werden der Anker, sein direkter Partner, alle direkten Vorfahren, deren eingeschlossene Partner, alle direkten Nachkommen, deren direkte Partner und die Beziehungen zwischen sichtbaren Personen angezeigt
+- **AND** die sichtbare Teilmenge wird mit dem bestehenden Layoutalgorithmus angeordnet
+
+#### Scenario: Direkte Nachkommenpartner bleiben im einfachen kombinierten Filter verborgen
+
+- **GIVEN** ein direkter Nachkomme des Ankers hat einen Partner und ein weiteres Kind, das ausschliesslich über diesen Partner erreichbar ist
+- **WHEN** der Filter „Direkte Vor und Nachfahren“ angewendet wird
+- **THEN** bleibt der Partner als direkter Nachkommenpartner sichtbar
+- **AND** das ausschliesslich über den Partner erreichbare Kind bleibt in dieser Ansicht unsichtbar
+
+### Requirement: Erweiterter kombinierter Vor- und Nachfahrenfilter
+
+Das System MUST einen Filter „Erweiterte direkte Vor und Nachfahren“ anbieten. Er MUSS die Vereinigung der bestehenden Filter „Erweiterte direkte Vorfahren“ und „Erweiterte Nachkommen“ mit demselben Anker bilden. Oberhalb des Ankers MUESSEN dadurch Geschwister direkter Vorfahren und deren Partner eingeschlossen werden. Unterhalb des Ankers MUESSEN Partner von Nachkommen sowie deren gemeinsame Kinder eingeschlossen werden. Der Filter DARF keiner Partnerkette folgen: Eltern, Kinder oder weitere Familienlinien eines nur als Partner eingeschlossenen Menschen MUESSEN ausgeschlossen bleiben, sofern sie nicht durch eine ausdrücklich beschriebene Einschlussregel erreicht werden. Die resultierende sichtbare Teilmenge MUSS automatisch mit dem bestehenden Layoutalgorithmus angeordnet werden; ein eigener Sanduhr-Layoutmodus ist nicht erforderlich.
+
+#### Scenario: Der erweiterte kombinierte Filter zeigt beide Seiten
+
+- **GIVEN** direkte Vorfahren haben Geschwister mit Partnern und direkte Nachkommen haben Partner mit gemeinsamen Kindern
+- **WHEN** der Filter „Erweiterte direkte Vor und Nachfahren“ angewendet wird
+- **THEN** werden die direkte Vorfahrenlinie, die erweiterten Seitenlinien oben, die direkte Nachkommenlinie, die Nachkommenpartner und deren Kinder unten angezeigt
+- **AND** die sichtbare Teilmenge wird mit dem bestehenden Layoutalgorithmus angeordnet
+
+#### Scenario: Der erweiterte kombinierte Filter folgt keiner Partnerkette
+
+- **GIVEN** ein eingeschlossener Nachkommenpartner hat eigene Eltern und ein eingeschlossenes Geschwister eines Vorfahrenpartners hat weitere Kinder
+- **WHEN** der Filter „Erweiterte direkte Vor und Nachfahren“ angewendet wird
+- **THEN** werden diese zusätzlichen Familienlinien nicht allein wegen der eingeschlossenen Partner angezeigt
+
+#### Scenario: Die kombinierten Modi übernehmen den ausgewählten Anker erst beim Klick
+
+- **GIVEN** Person A ist ausgewaehlt und ein kombinierter Modus wurde angewendet
+- **WHEN** Person B ausgewaehlt wird, ohne den Filterbutton erneut zu klicken
+- **THEN** bleibt die sichtbare gefilterte Projektion um Person A unveraendert
+- **AND** ein erneuter Klick auf denselben kombinierten Button berechnet den Filter mit Person B als Anker und ordnet die neue Projektion mit dem bestehenden Layoutalgorithmus an
 
 ### Requirement: Eine Nachkommenansicht kann gefiltert werden
 
-Das System MUST eine Ansicht „Nachkommen“ anbieten, die den ausgewaehlten Anker und alle Personen enthaelt, die ueber beliebig viele gerichtete parent-child-Beziehungen abwaerts vom Anker erreichbar sind. Die Ansicht MUSS den Partner des Ankers sowie Partner von Nachkommen und alle ausschliesslich ueber Partner erreichbaren Personen ausschliessen. Die Auswertung MUSS fuer jede Generation gelten und darf nicht auf eine feste Tiefe begrenzt sein.
+Das System MUST eine Ansicht „Nachkommen“ anbieten, die den ausgewaehlten Anker und alle Personen enthaelt, die ueber beliebig viele gerichtete parent-child-Beziehungen abwaerts vom Anker erreichbar sind. Die Ansicht MUSS den Partner des Ankers sowie die direkten Partner aller angezeigten Nachkommen enthalten. Sie MUSS Eltern, Kinder und alle sonst ausschliesslich ueber einen Partner erreichbaren Personen ausschliessen. Die Auswertung MUSS fuer jede Generation gelten und darf nicht auf eine feste Tiefe begrenzt sein.
 
 #### Scenario: Kinder und Enkel des Ankers bleiben sichtbar
 
@@ -397,10 +439,10 @@ Das System MUST eine Ansicht „Nachkommen“ anbieten, die den ausgewaehlten An
 
 #### Scenario: Partner der Nachkommen werden ausgeschlossen
 
-- **GIVEN** ein Nachkomme hat einen Partner, der eigene Eltern und ein weiteres Kind aus einer anderen Beziehung hat
+- **GIVEN** der Anker hat einen Partner und ein Nachkomme hat einen Partner, der eigene Eltern und ein weiteres Kind aus einer anderen Beziehung hat
 - **WHEN** die Ansicht „Nachkommen“ aktiviert wird
-- **THEN** bleibt der Nachkomme sichtbar
-- **AND** der Partner, dessen Eltern und das weitere Kind bleiben unsichtbar
+- **THEN** werden der Anker, sein Partner, der Nachkomme und dessen Partner angezeigt
+- **AND** die Eltern des Nachkommenpartners und das weitere Kind bleiben unsichtbar
 
 #### Scenario: Eine lange Nachkommenlinie wird nicht auf eine feste Generation begrenzt
 
@@ -410,7 +452,7 @@ Das System MUST eine Ansicht „Nachkommen“ anbieten, die den ausgewaehlten An
 
 ### Requirement: Eine erweiterte Nachkommenansicht kann gefiltert werden
 
-Das System MUST eine Ansicht „Erweiterte Nachkommen“ anbieten. Sie MUSS den Anker und alle Nachkommen des Ankers sowie alle direkten Partner jedes tatsächlichen Nachkommens enthalten. Zusätzlich MUSS sie jedes Kind jedes so eingeschlossenen Partners enthalten, auch wenn dieses Kind nicht über den Anker abstammt. Der Partner des Ankers selbst DARF nicht allein durch diese Ansicht eingeschlossen werden. Die Erweiterung DARF keine Partner der neu hinzugekommenen Kinder, keine Eltern der Partner und keine weiteren Personen aus einer Partnerkette rekursiv einbeziehen.
+Das System MUST eine Ansicht „Erweiterte Nachkommen“ anbieten. Sie MUSS den Anker und alle Nachkommen des Ankers sowie den direkten Partner des Ankers und alle direkten Partner jedes tatsächlichen Nachkommens enthalten. Zusätzlich MUSS sie jedes Kind jedes Partners eines tatsächlichen Nachkommens enthalten, auch wenn dieses Kind nicht über den Anker abstammt. Der Partner des Ankers MUSS als einzelner Knoten sichtbar sein; seine eigene Familienlinie DARF nicht allein durch diese Ansicht eingeschlossen werden. Die Erweiterung DARF keine Partner der neu hinzugekommenen Kinder, keine Eltern der Partner und keine weiteren Personen aus einer Partnerkette rekursiv einbeziehen.
 
 #### Scenario: Alle Partner der Nachkommen und deren Kinder bleiben sichtbar
 
@@ -420,10 +462,10 @@ Das System MUST eine Ansicht „Erweiterte Nachkommen“ anbieten. Sie MUSS den 
 
 #### Scenario: Der Partner des Ankers bleibt ausgeschlossen
 
-- **GIVEN** der Anker hat einen Partner und ein Kind
+- **GIVEN** der Anker hat einen Partner und dieser Partner hat ein eigenes Kind sowie der Anker ein Kind
 - **WHEN** die Ansicht „Erweiterte Nachkommen“ aktiviert wird
-- **THEN** werden der Anker und das Kind angezeigt
-- **AND** der Partner des Ankers bleibt unsichtbar
+- **THEN** werden der Anker, sein Partner und das Kind des Ankers angezeigt
+- **AND** das eigene Kind des Ankerpartners bleibt unsichtbar
 
 #### Scenario: Die Erweiterung folgt keiner Partnerkette
 

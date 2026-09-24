@@ -32,7 +32,9 @@ const addPerson = async (
     await page.getByLabel('Todesdatum').fill(deathDate)
   }
   await page.getByRole('button', { name: 'Person speichern' }).click()
-  await expect(page.getByText(`${firstName} ${lastName}`)).toBeVisible()
+  await expect(
+    page.locator('.person-node').filter({ hasText: `${firstName} ${lastName}` }),
+  ).toBeVisible()
 }
 
 const connectPeople = async (

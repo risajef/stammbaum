@@ -41,6 +41,9 @@ describe('browser file port', () => {
     await expect(port.open()).resolves.toEqual({ name: 'family.yaml', contents: 'tree' })
     await port.save('serialized-tree', 'family.yaml')
 
+    expect(directEnvironment.showSaveFilePicker).toHaveBeenCalledWith({
+      suggestedName: 'family.yaml',
+    })
     expect(writable.write).toHaveBeenCalledWith('serialized-tree')
     expect(writable.close).toHaveBeenCalledOnce()
   })

@@ -51,7 +51,7 @@ const marriage: Relationship = {
 }
 
 describe('RelationshipInspector', () => {
-  it('shows and edits the comment of an inferred relationship', () => {
+  it('allows confirming an inferred relationship', () => {
     const onSave = vi.fn()
     const onRemove = vi.fn()
 
@@ -67,15 +67,16 @@ describe('RelationshipInspector', () => {
     )
 
     expect(screen.getByText('Automatisch abgeleitet.', { selector: 'p' })).toBeVisible()
+    expect(screen.getByLabelText('Status')).not.toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'explicit' } })
     fireEvent.change(screen.getByLabelText('Kommentar'), {
       target: { value: 'Annahme prüfen.' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Beziehung speichern' }))
 
     expect(onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ comment: 'Annahme prüfen.' }),
+      expect.objectContaining({ status: 'explicit', comment: 'Annahme prüfen.' }),
     )
-    expect(screen.getByLabelText('Status')).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Beziehung entfernen' })).toBeNull()
   })
 

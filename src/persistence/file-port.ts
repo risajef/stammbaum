@@ -14,6 +14,10 @@ interface SaveFileHandle {
   }>
 }
 
+interface SaveFilePickerOptions {
+  suggestedName?: string
+}
+
 export interface BrowserFileEnvironment {
   document: Document
   urlApi: {
@@ -21,7 +25,7 @@ export interface BrowserFileEnvironment {
     revokeObjectURL: (url: string) => void
   }
   showOpenFilePicker?: () => Promise<OpenFileHandle[]>
-  showSaveFilePicker?: () => Promise<SaveFileHandle>
+  showSaveFilePicker?: (options?: SaveFilePickerOptions) => Promise<SaveFileHandle>
 }
 
 const browserEnvironment = (): BrowserFileEnvironment => {
@@ -120,7 +124,7 @@ export const createBrowserFilePort = (
 
   async save(contents: string, filename: string): Promise<void> {
     if (environment.showSaveFilePicker) {
-      const handle = await environment.showSaveFilePicker()
+      const handle = await environment.showSaveFilePicker({ suggestedName: filename })
       const writable = await handle.createWritable()
       await writable.write(contents)
       await writable.close()

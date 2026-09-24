@@ -187,6 +187,47 @@ describe('application workbench', () => {
     expect(screen.getByText('1 Person')).toBeVisible()
   })
 
+  it('places a newly created person in the center of the canvas', async () => {
+    const bounds = {
+      left: 0,
+      top: 0,
+      right: 800,
+      bottom: 600,
+      width: 800,
+      height: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.classList.contains('flow-surface') || this.classList.contains('react-flow')) {
+        return bounds
+      }
+
+      return {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 0,
+        height: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect
+    })
+
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Person anlegen' }))
+    fireEvent.change(screen.getByLabelText('Vorname'), { target: { value: 'Ada' } })
+    fireEvent.change(screen.getByLabelText('Nachname'), { target: { value: 'Lovelace' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Person speichern' }))
+
+    const node = (await screen.findByText('Ada Lovelace')).closest('.react-flow__node')
+    await waitFor(() => expect(node).toHaveStyle({ transform: 'translate(326px,256px)' }))
+  })
+
   it('shows gender-specific marriage handles only for people with a gender', async () => {
     render(<App />)
 
@@ -517,6 +558,10 @@ relationships:
     const extendedFilter = screen.getByRole('button', { name: 'Erweiterte direkte Vorfahren' })
     const descendantsFilter = screen.getByRole('button', { name: 'Nachkommen' })
     const extendedDescendantsFilter = screen.getByRole('button', { name: 'Erweiterte Nachkommen' })
+    const combinedFilter = screen.getByRole('button', { name: 'Direkte Vor und Nachfahren' })
+    const extendedCombinedFilter = screen.getByRole('button', {
+      name: 'Erweiterte direkte Vor und Nachfahren',
+    })
     expect(screen.queryAllByRole('radio')).toHaveLength(0)
     expect(allPeople).toHaveAttribute('type', 'button')
     expect(bloodFilter).toHaveAttribute('type', 'button')
@@ -524,6 +569,8 @@ relationships:
     expect(extendedFilter).toHaveAttribute('type', 'button')
     expect(descendantsFilter).toHaveAttribute('type', 'button')
     expect(extendedDescendantsFilter).toHaveAttribute('type', 'button')
+    expect(combinedFilter).toHaveAttribute('type', 'button')
+    expect(extendedCombinedFilter).toHaveAttribute('type', 'button')
     expect(bloodFilter).not.toHaveAttribute('aria-pressed', 'true')
 
     fireEvent.click(directFilter)
@@ -627,24 +674,103 @@ relationships:
     fireEvent.click(screen.getByText('Anchor Person'))
     fireEvent.click(descendantsFilter)
 
-    expect(screen.getByText('4 von 6 sichtbar')).toBeVisible()
+    expect(screen.getByText('5 von 6 sichtbar')).toBeVisible()
     expect(screen.getByText('Child Person')).toBeVisible()
     expect(screen.getByText('Grandchild Person')).toBeVisible()
+    expect(screen.getByText('Partner Person')).toBeVisible()
     expect(screen.getByText('Partner Child')).toBeVisible()
-    expect(screen.queryByText('Partner Person')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByText('Child Person'))
-    expect(screen.getByText('4 von 6 sichtbar')).toBeVisible()
+    expect(screen.getByText('5 von 6 sichtbar')).toBeVisible()
     expect(screen.getByLabelText('Vorname')).toHaveValue('Child')
 
     fireEvent.click(descendantsFilter)
-    expect(screen.getByText('3 von 6 sichtbar')).toBeVisible()
+    expect(screen.getByText('4 von 6 sichtbar')).toBeVisible()
     expect(screen.queryByText('Anchor Person')).not.toBeInTheDocument()
+    expect(screen.getByText('Partner Person')).toBeVisible()
 
     fireEvent.click(extendedDescendantsFilter)
     expect(screen.getByText('4 von 6 sichtbar')).toBeVisible()
     expect(screen.getByText('Partner Person')).toBeVisible()
     expect(screen.getByText('Partner Child')).toBeVisible()
+  })
+
+  it('keeps a combined filter anchored until the combined button is clicked again', async () => {
+    const filterYaml = `schemaVersion: 1
+persons:
+  - id: anchor
+    firstName: Anchor
+    lastName: Person
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: child
+    firstName: Child
+    lastName: Person
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: grandchild
+    firstName: Grandchild
+    lastName: Person
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: sibling
+    firstName: Sibling
+    lastName: Person
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: separate
+    firstName: Separate
+    lastName: Person
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+relationships:
+  - id: anchor-child
+    type: parent-child
+    fromId: anchor
+    toId: child
+    status: explicit
+    sourceUrl: null
+  - id: child-grandchild
+    type: parent-child
+    fromId: child
+    toId: grandchild
+    status: explicit
+    sourceUrl: null
+  - id: anchor-sibling
+    type: parent-child
+    fromId: anchor
+    toId: sibling
+    status: explicit
+    sourceUrl: null`
+    stubYamlOpen(filterYaml, 'combined.yaml')
+
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Öffnen' }))
+    await waitFor(() => expect(screen.getByText('Geöffnet: combined.yaml')).toBeVisible())
+
+    const combinedFilter = screen.getByRole('button', { name: 'Direkte Vor und Nachfahren' })
+    fireEvent.click(await screen.findByText('Anchor Person'))
+    fireEvent.click(combinedFilter)
+    expect(screen.getByText('4 von 5 sichtbar')).toBeVisible()
+
+    fireEvent.click(screen.getByText('Child Person'))
+    expect(screen.getByText('4 von 5 sichtbar')).toBeVisible()
+    expect(screen.getByLabelText('Vorname')).toHaveValue('Child')
+
+    fireEvent.click(combinedFilter)
+    expect(screen.getByText('3 von 5 sichtbar')).toBeVisible()
+    expect(screen.queryByText('Sibling Person')).not.toBeInTheDocument()
+    expect(screen.getByText('Grandchild Person')).toBeVisible()
   })
 
   it('keeps a newly created person visible until the YAML is saved', async () => {
@@ -684,6 +810,80 @@ relationships: []`
     fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
     await waitFor(() => expect(write).toHaveBeenCalledOnce())
     await waitFor(() => expect(screen.queryByText('Neu Person')).not.toBeInTheDocument())
+  })
+
+  it('exports the visible projection with a suggested name without changing the workbench state', async () => {
+    const filterYaml = `schemaVersion: 1
+persons:
+  - id: anchor
+    firstName: Ernst
+    lastName: Weber
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: ancestor
+    firstName: Anna
+    lastName: Weber
+    gender: woman
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: ancestor-partner
+    firstName: Hans
+    lastName: Weber
+    gender: man
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: hidden
+    firstName: Versteckt
+    lastName: Weber
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+relationships:
+  - id: ancestor-anchor
+    type: parent-child
+    fromId: ancestor
+    toId: anchor
+    status: explicit
+    sourceUrl: null
+  - id: ancestor-marriage
+    type: marriage
+    fromId: ancestor
+    toId: ancestor-partner
+    status: explicit
+    sourceUrl: null`
+    const write = vi.fn().mockResolvedValue(undefined)
+    const close = vi.fn().mockResolvedValue(undefined)
+    const showSaveFilePicker = vi.fn().mockResolvedValue({
+      createWritable: vi.fn().mockResolvedValue({ write, close }),
+    })
+    stubYamlOpen(filterYaml, 'export.yaml')
+    vi.stubGlobal('showSaveFilePicker', showSaveFilePicker)
+
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Öffnen' }))
+    await waitFor(() => expect(screen.getByText('Geöffnet: export.yaml')).toBeVisible())
+
+    fireEvent.click(screen.getByText('Ernst Weber'))
+    fireEvent.click(screen.getByRole('button', { name: 'Direkte Vorfahren' }))
+    expect(screen.getByText('3 von 4 sichtbar')).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Exportieren' }))
+    await waitFor(() => expect(write).toHaveBeenCalledOnce())
+
+    const exportedYaml = write.mock.calls[0]?.[0] as string
+    expect(showSaveFilePicker).toHaveBeenCalledWith({
+      suggestedName: 'Direkte Vorfahren Ernst Weber.yaml',
+    })
+    expect(exportedYaml).toContain('id: anchor')
+    expect(exportedYaml).toContain('id: ancestor-partner')
+    expect(exportedYaml).not.toContain('id: hidden')
+    expect(screen.getByText('Geöffnet: export.yaml')).toBeVisible()
+    expect(screen.queryByText('Ungespeichert')).not.toBeInTheDocument()
   })
 
   it('merges the selected person with another node after an irreversible confirmation', async () => {

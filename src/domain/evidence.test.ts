@@ -5,6 +5,7 @@ import {
   createParentChild,
   updateRelationship,
 } from './relationship'
+import { synchronizeInferredRelationships } from './inference'
 import type { FamilyTreeDocument } from './types'
 
 const documentWithPeople = (): FamilyTreeDocument => ({
@@ -122,6 +123,55 @@ describe('relationship evidence', () => {
         toId: 'man-1',
         status: 'inferred',
         sourceUrl: 'https://example.org/updated',
+      })
+    }
+  })
+
+  it('confirms an inferred relationship as a manual explicit relationship', () => {
+    const document: FamilyTreeDocument = {
+      ...documentWithPeople(),
+      relationships: [
+        {
+          id: 'source-parent-child',
+          type: 'parent-child',
+          fromId: 'woman-1',
+          toId: 'child-1',
+          status: 'explicit',
+          sourceUrl: null,
+        },
+        {
+          id: 'inferred-parent-child',
+          type: 'parent-child',
+          fromId: 'man-1',
+          toId: 'child-1',
+          status: 'inferred',
+          sourceUrl: null,
+          inferredFrom: {
+            rule: 'spouse-parent',
+            sourceRelationshipId: 'source-parent-child',
+          },
+          origin: 'automatic-inference',
+        },
+      ],
+    }
+
+    const result = updateRelationship(document, 'inferred-parent-child', {
+      status: 'explicit',
+    })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.value.relationships[1]).toMatchObject({
+        status: 'explicit',
+        inferredFrom: null,
+        origin: 'manual',
+      })
+
+      const synchronized = synchronizeInferredRelationships(result.value)
+      expect(synchronized.relationships[1]).toMatchObject({
+        status: 'explicit',
+        inferredFrom: null,
+        origin: 'manual',
       })
     }
   })

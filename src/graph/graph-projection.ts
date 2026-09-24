@@ -272,13 +272,25 @@ const createFamilyComponents = (document: LayoutDocument) => {
 
   const personById = new Map(document.persons.map((person) => [person.id, person]))
   const personOrder = new Map(document.persons.map((person, index) => [person.id, index]))
+  const marriageDatesByPerson = selectEarliestKnownMarriageDates(document.relationships)
   const components = [...membersByRoot.entries()].map(([id, memberIds], order) => {
     const hasMarriage = memberIds.some((personId) => marriedPersonIds.has(personId))
     if (hasMarriage) {
       memberIds.sort((firstId, secondId) => {
         const firstGender = genderOrder(personById.get(firstId)?.gender ?? null)
         const secondGender = genderOrder(personById.get(secondId)?.gender ?? null)
+        const firstMarriageDate = marriageDatesByPerson.get(firstId)
+        const secondMarriageDate = marriageDatesByPerson.get(secondId)
+        const marriageDateOrder = firstMarriageDate && !secondMarriageDate
+          ? -1
+          : !firstMarriageDate && secondMarriageDate
+          ? 1
+          : firstMarriageDate && secondMarriageDate
+          ? compareKnownPartialDates(firstMarriageDate, secondMarriageDate)
+          : 0
+
         return firstGender - secondGender ||
+          marriageDateOrder ||
           (personOrder.get(firstId) ?? 0) - (personOrder.get(secondId) ?? 0)
       })
     }
@@ -323,7 +335,7 @@ const createFamilyComponentGraph = (document: LayoutDocument): FamilyComponentGr
   return { components, componentByPerson, parentComponents, childrenByComponent }
 }
 
-const compareKnownBirthDates = (first: PartialDateParts, second: PartialDateParts): -1 | 0 | 1 => {
+const compareKnownPartialDates = (first: PartialDateParts, second: PartialDateParts): -1 | 0 | 1 => {
   if (first.year < second.year) return -1
   if (first.year > second.year) return 1
 
@@ -349,12 +361,34 @@ const selectEarliestKnownBirthDate = (
     const birthDate = parsePartialDate(person.birthYear)
     if (!birthDate) continue
 
-    if (!earliestDate || compareKnownBirthDates(birthDate, earliestDate) === -1) {
+    if (!earliestDate || compareKnownPartialDates(birthDate, earliestDate) === -1) {
       earliestDate = birthDate
     }
   }
 
   return earliestDate
+}
+
+const selectEarliestKnownMarriageDates = (
+  relationships: readonly Relationship[],
+): ReadonlyMap<string, PartialDateParts> => {
+  const datesByPerson = new Map<string, PartialDateParts>()
+
+  relationships.forEach((relationship) => {
+    if (relationship.type !== 'marriage') return
+
+    const marriageDate = parsePartialDate(relationship.startDate)
+    if (!marriageDate) return
+
+    for (const personId of [relationship.fromId, relationship.toId]) {
+      const currentDate = datesByPerson.get(personId)
+      if (!currentDate || compareKnownPartialDates(marriageDate, currentDate) === -1) {
+        datesByPerson.set(personId, marriageDate)
+      }
+    }
+  })
+
+  return datesByPerson
 }
 
 const createWeakComponentGroups = (
@@ -614,7 +648,7 @@ const createGeneratedPositions = (document: LayoutDocument): Map<string, Positio
         if (!firstBirthDate && secondBirthDate) return 1
 
         return (firstBirthDate && secondBirthDate
-          ? compareKnownBirthDates(firstBirthDate, secondBirthDate)
+          ? compareKnownPartialDates(firstBirthDate, secondBirthDate)
           : 0) ||
           (componentById.get(firstId)?.order ?? 0) - (componentById.get(secondId)?.order ?? 0)
       },
@@ -953,7 +987,11 @@ export const projectFamilyTree = (
     relationships: displayRelationships,
   })
   const effectivePositionOverrides = hasActiveViewFilter(viewOptions)
-    ? new Map<string, Position>()
+    ? new Map(
+        [...positionOverrides].filter(([personId]) =>
+          viewOptions.unfilteredPersonIds?.includes(personId),
+        ),
+      )
     : positionOverrides
 
   return {

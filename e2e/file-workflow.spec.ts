@@ -129,6 +129,75 @@ test.describe('Datei-Workflow', () => {
     await expect(page.locator('.relationship-edge')).toHaveCount(1)
   })
 
+  test('exportiert genau die aktuell gefilterte Ansicht mit sprechendem Dateinamen', async ({ page }) => {
+    await page.goto('/')
+    const yaml = `schemaVersion: 1
+persons:
+  - id: anchor
+    firstName: Ernst
+    lastName: Weber
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: ancestor
+    firstName: Anna
+    lastName: Weber
+    gender: woman
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: ancestor-partner
+    firstName: Hans
+    lastName: Weber
+    gender: man
+    birthYear: null
+    deathYear: null
+    position: null
+  - id: hidden
+    firstName: Versteckt
+    lastName: Weber
+    gender: null
+    birthYear: null
+    deathYear: null
+    position: null
+relationships:
+  - id: ancestor-anchor
+    type: parent-child
+    fromId: ancestor
+    toId: anchor
+    status: explicit
+    sourceUrl: null
+  - id: ancestor-marriage
+    type: marriage
+    fromId: ancestor
+    toId: ancestor-partner
+    status: explicit
+    sourceUrl: null`
+    await openFile(page, { name: 'source.yaml', buffer: Buffer.from(yaml) })
+    await expect(page.locator('.person-node')).toHaveCount(4)
+
+    await page.locator('.person-node').filter({ hasText: 'Ernst Weber' }).click()
+    await page.getByRole('button', { name: 'Direkte Vorfahren', exact: true }).click()
+    await expect(page.getByText('3 von 4 sichtbar')).toBeVisible()
+
+    const downloadPromise = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Exportieren' }).click()
+    const download = await downloadPromise
+    expect(download.suggestedFilename()).toBe('Direkte Vorfahren Ernst Weber.yaml')
+    const stream = await download.createReadStream()
+    if (!stream) throw new Error('Export konnte nicht gelesen werden.')
+    const chunks: Buffer[] = []
+    for await (const chunk of stream) chunks.push(Buffer.from(chunk))
+    const exportedYaml = Buffer.concat(chunks).toString('utf8')
+
+    expect(exportedYaml).toContain('id: anchor')
+    expect(exportedYaml).toContain('id: ancestor-partner')
+    expect(exportedYaml).not.toContain('id: hidden')
+    await expect(page.getByText('Geöffnet: source.yaml')).toBeVisible()
+    await expect(page.getByText('Ungespeichert')).not.toBeVisible()
+  })
+
   test('erhält Teil-Datumswerte beim Export und Import', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Person anlegen' }).click()
@@ -212,5 +281,29 @@ test.describe('Datei-Workflow', () => {
       }
       return Math.hypot(nodeCenter.x - surfaceCenter.x, nodeCenter.y - surfaceCenter.y)
     }).toBeLessThan(36)
+  })
+
+  test('verschiebt eine neu angelegte Person auch bei aktivem Filter', async ({ page }) => {
+    await page.goto('/')
+    await addPerson(page, 'Anna', 'Weber')
+
+    await page.locator('.person-node').filter({ hasText: 'Anna Weber' }).click()
+    await page.getByRole('button', { name: 'Nur Blutsverwandte' }).click()
+    await expect(page.getByText('1 von 1 sichtbar')).toBeVisible()
+
+    await addPerson(page, 'Lina', 'Weber')
+    const newNode = page.locator('.person-node').filter({ hasText: 'Lina Weber' })
+    const before = await newNode.boundingBox()
+    if (!before) throw new Error('Neue Person fehlt.')
+
+    await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(before.x + 180, before.y + 120, { steps: 10 })
+    await page.mouse.up()
+
+    await expect.poll(async () => {
+      const after = await newNode.boundingBox()
+      return after ? Math.hypot(after.x - before.x, after.y - before.y) : 0
+    }).toBeGreaterThan(20)
   })
 })

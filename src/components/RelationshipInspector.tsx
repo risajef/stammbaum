@@ -180,7 +180,6 @@ function RelationshipInspector({
             aria-invalid={Boolean(fieldError('status'))}
             aria-label="Status"
             value={values.status}
-            disabled={Boolean(relationship?.inferredFrom)}
             onChange={(event) =>
               updateValue('status', event.target.value as RelationshipStatus)
             }

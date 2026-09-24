@@ -103,6 +103,27 @@ test.describe('Beziehungsdetails', () => {
     await expect(page.getByLabel('Quelle (URL)')).toHaveValue('https://example.org/register/28')
   })
 
+  test('bestätigt eine geschlussfolgerte Eltern-Kind-Beziehung', async ({ page }) => {
+    await page.goto('/')
+    await createMarriage(page)
+    await addPerson(page, 'Lina', 'Weber')
+    await connectPeople(page, 'Anna Weber', 'Lina Weber')
+    await page.getByRole('button', { name: 'Beziehung speichern' }).click()
+
+    await expect(page.locator('.relationship-edge--inferred')).toHaveCount(1)
+    await page.locator('.react-flow__edge.relationship-edge--inferred').dispatchEvent('click')
+    await expect(page.getByRole('status', { name: 'Geschlussfolgert' })).toBeVisible()
+    await expect(page.getByLabel('Status')).not.toBeDisabled()
+
+    await page.getByLabel('Status').selectOption('explicit')
+    await page.getByRole('button', { name: 'Beziehung speichern' }).click()
+
+    await expect(page.locator('.relationship-edge--inferred')).toHaveCount(0)
+    await expect(page.locator('.relationship-edge--explicit')).toHaveCount(3)
+    await expect(page.getByRole('status', { name: 'Explizit' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Beziehung entfernen' })).toBeVisible()
+  })
+
   test('weist eine ungültige Quelle am Quellenfeld zurück', async ({ page }) => {
     await page.goto('/')
     await createMarriage(page)

@@ -6,6 +6,7 @@ import {
   findDuplicatePersonPairs,
   findPersonSearchMatches,
 } from './graph-view'
+import { projectFamilyTree } from './graph-projection'
 
 const person = (
   id: string,
@@ -120,6 +121,24 @@ const descendantDocument: FamilyTreeDocument = {
     relationship('partner-a-parent-link', 'parent-child', 'partner-a-parent', 'grandchild-partner-a'),
     relationship('partner-a-child-partner-link', 'marriage', 'partner-a-child', 'partner-a-child-partner'),
     relationship('anchor-partner-child-link', 'parent-child', 'anchor-partner', 'anchor-partner-child'),
+  ],
+}
+
+const combinedDocument: FamilyTreeDocument = {
+  ...ancestorDocument,
+  persons: [
+    ...ancestorDocument.persons,
+    person('child', '1920'),
+    person('grandchild', '1950'),
+    person('grandchild-partner', '1951'),
+    person('partner-child', '1970'),
+  ],
+  relationships: [
+    ...ancestorDocument.relationships,
+    relationship('anchor-child', 'parent-child', 'anchor', 'child'),
+    relationship('child-grandchild', 'parent-child', 'child', 'grandchild'),
+    relationship('grandchild-partner-link', 'marriage', 'grandchild', 'grandchild-partner'),
+    relationship('partner-child-link', 'parent-child', 'grandchild-partner', 'partner-child'),
   ],
 }
 
@@ -298,7 +317,7 @@ describe('family tree view projection', () => {
     expect(visible.persons.map(({ id }) => id)).toEqual(['anchor'])
   })
 
-  it('shows the anchor and all descendants without partner families', () => {
+  it('shows the anchor, descendants, and their direct partners without partner families', () => {
     const descendants = filterFamilyTreeDocument(descendantDocument, {
       bloodlineAnchorPersonId: 'anchor',
       bloodlineMode: 'descendants',
@@ -306,13 +325,28 @@ describe('family tree view projection', () => {
 
     expect(descendants.persons.map(({ id }) => id)).toEqual([
       'anchor',
+      'anchor-partner',
       'child',
       'grandchild',
+      'grandchild-partner-a',
+      'grandchild-partner-b',
     ])
     expect(descendants.relationships.map(({ id }) => id)).toEqual([
+      'anchor-partner-link',
       'anchor-child',
       'child-grandchild',
+      'grandchild-partner-a-link',
+      'grandchild-partner-b-link',
     ])
+    expect(descendants.persons.map(({ id }) => id)).not.toEqual(
+      expect.arrayContaining([
+        'partner-a-child',
+        'partner-b-child',
+        'partner-a-parent',
+        'partner-a-child-partner',
+        'anchor-partner-child',
+      ]),
+    )
   })
 
   it('follows descendant lines beyond ten generations', () => {
@@ -346,6 +380,7 @@ describe('family tree view projection', () => {
 
     expect(extendedDescendants.persons.map(({ id }) => id)).toEqual([
       'anchor',
+      'anchor-partner',
       'child',
       'grandchild',
       'grandchild-partner-a',
@@ -355,7 +390,6 @@ describe('family tree view projection', () => {
     ])
     expect(extendedDescendants.persons.map(({ id }) => id)).not.toEqual(
       expect.arrayContaining([
-        'anchor-partner',
         'partner-a-parent',
         'partner-a-child-partner',
         'anchor-partner-child',
@@ -455,6 +489,82 @@ describe('family tree view projection', () => {
     expect(extendedAncestors.relationships.every(({ fromId, toId }) =>
       extendedAncestors.persons.some(({ id }) => id === fromId) &&
       extendedAncestors.persons.some(({ id }) => id === toId))).toBe(true)
+  })
+
+  it('combines direct ancestors and descendants with direct partners only', () => {
+    const combined = filterFamilyTreeDocument(combinedDocument, {
+      anchorPersonId: 'anchor',
+      bloodlineMode: 'direct-ancestors-and-descendants',
+    })
+
+    expect(combined.persons.map(({ id }) => id)).toEqual([
+      'anchor',
+      'parent',
+      'grandparent',
+      'other-grandparent',
+      'parent-partner',
+      'grandparent-partner',
+      'other-grandparent-partner',
+      'anchor-partner',
+      'child',
+      'grandchild',
+      'grandchild-partner',
+    ])
+    expect(combined.persons.map(({ id }) => id)).not.toEqual(
+      expect.arrayContaining(['partner-child']),
+    )
+  })
+
+  it('combines extended ancestor and descendant rules without partner chains', () => {
+    const combined = filterFamilyTreeDocument(combinedDocument, {
+      anchorPersonId: 'anchor',
+      bloodlineMode: 'extended-direct-ancestors-and-descendants',
+    })
+
+    expect(combined.persons.map(({ id }) => id)).toEqual([
+      'anchor',
+      'parent',
+      'grandparent',
+      'other-grandparent',
+      'parent-partner',
+      'grandparent-partner',
+      'other-grandparent-partner',
+      'full-sibling',
+      'half-sibling',
+      'sibling-partner',
+      'half-sibling-partner',
+      'anchor-partner',
+      'child',
+      'grandchild',
+      'grandchild-partner',
+      'partner-child',
+    ])
+    expect(combined.persons.map(({ id }) => id)).not.toEqual(
+      expect.arrayContaining(['sibling-child', 'sibling-child-partner', 'partner-parent']),
+    )
+  })
+
+  it('uses the existing generated layout for a combined filter projection', () => {
+    const projection = projectFamilyTree(combinedDocument, undefined, new Map(), {
+      bloodlineAnchorPersonId: 'anchor',
+      bloodlineMode: 'direct-ancestors-and-descendants',
+    })
+
+    expect(projection.nodes.map(({ id }) => id)).toEqual([
+      'anchor',
+      'parent',
+      'grandparent',
+      'other-grandparent',
+      'parent-partner',
+      'grandparent-partner',
+      'other-grandparent-partner',
+      'anchor-partner',
+      'child',
+      'grandchild',
+      'grandchild-partner',
+    ])
+    expect(projection.nodes.every(({ position }) =>
+      Number.isFinite(position.x) && Number.isFinite(position.y))).toBe(true)
   })
 
   it('does not cross from a descendant to the other parent or that family', () => {

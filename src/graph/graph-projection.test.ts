@@ -1018,6 +1018,117 @@ describe('family tree graph projection', () => {
     expect(Math.abs((firstHusband?.position.x ?? 0) - (secondHusband?.position.x ?? 0))).toBeLessThan(200)
   })
 
+  it('orders multiple marriage partners by marriage date instead of birth order', () => {
+    const document: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        layoutPerson('woman', '1800', 'woman'),
+        layoutPerson('later-marriage-older-partner', '1790', 'man'),
+        layoutPerson('earlier-marriage-younger-partner', '1850', 'man'),
+      ],
+      relationships: [
+        {
+          id: 'later-marriage',
+          type: 'marriage',
+          fromId: 'woman',
+          toId: 'later-marriage-older-partner',
+          startDate: '1910',
+          status: 'explicit',
+          sourceUrl: null,
+        },
+        {
+          id: 'earlier-marriage',
+          type: 'marriage',
+          fromId: 'woman',
+          toId: 'earlier-marriage-younger-partner',
+          startDate: '1900',
+          status: 'explicit',
+          sourceUrl: null,
+        },
+      ],
+    }
+
+    const projection = projectFamilyTree(document)
+    const node = (id: string) => projection.nodes.find((candidate) => candidate.id === id)
+
+    expect(node('earlier-marriage-younger-partner')?.position.x).toBeLessThan(
+      node('later-marriage-older-partner')?.position.x ?? 0,
+    )
+  })
+
+  it('keeps marriage partners without dates after dated partners in stable order', () => {
+    const document: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        layoutPerson('woman', '1800', 'woman'),
+        layoutPerson('undated-first', '1790', 'man'),
+        layoutPerson('undated-second', '1795', 'man'),
+        layoutPerson('dated-partner', '1850', 'man'),
+      ],
+      relationships: [
+        {
+          id: 'undated-marriage-first',
+          type: 'marriage',
+          fromId: 'woman',
+          toId: 'undated-first',
+          status: 'explicit',
+          sourceUrl: null,
+        },
+        {
+          id: 'undated-marriage-second',
+          type: 'marriage',
+          fromId: 'woman',
+          toId: 'undated-second',
+          status: 'explicit',
+          sourceUrl: null,
+        },
+        {
+          id: 'dated-marriage',
+          type: 'marriage',
+          fromId: 'woman',
+          toId: 'dated-partner',
+          startDate: '1900',
+          status: 'explicit',
+          sourceUrl: null,
+        },
+      ],
+    }
+
+    const projection = projectFamilyTree(document)
+    const node = (id: string) => projection.nodes.find((candidate) => candidate.id === id)
+    const datedPartner = node('dated-partner')?.position.x ?? 0
+    const undatedFirst = node('undated-first')?.position.x ?? 0
+    const undatedSecond = node('undated-second')?.position.x ?? 0
+
+    expect(datedPartner).toBeLessThan(undatedFirst)
+    expect(undatedFirst).toBeLessThan(undatedSecond)
+  })
+
+  it('keeps a newly created person position override while a filter is active', () => {
+    const document: FamilyTreeDocument = {
+      schemaVersion: 1,
+      persons: [
+        layoutPerson('anchor', '1900'),
+        layoutPerson('new-person', null),
+      ],
+      relationships: [],
+    }
+
+    const projection = projectFamilyTree(
+      document,
+      undefined,
+      new Map([['new-person', { x: 320, y: 240 }]]),
+      {
+        bloodlineAnchorPersonId: 'anchor',
+        bloodlineMode: 'blood',
+        unfilteredPersonIds: ['new-person'],
+      },
+    )
+    const newPerson = projection.nodes.find((node) => node.id === 'new-person')
+
+    expect(newPerson?.position).toEqual({ x: 320, y: 240 })
+  })
+
   it('places spouses together, children below them, and ignores saved positions', () => {
     const document: FamilyTreeDocument = {
       schemaVersion: 1,

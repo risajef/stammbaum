@@ -16,6 +16,8 @@ export type BloodlineMode =
   | 'extended-direct-ancestors'
   | 'descendants'
   | 'extended-descendants'
+  | 'direct-ancestors-and-descendants'
+  | 'extended-direct-ancestors-and-descendants'
 
 export interface GraphViewOptions {
   anchorPersonId?: string | null
@@ -177,12 +179,28 @@ const descendantIds = (
   return descendants
 }
 
-const extendedDescendantIds = (
+const descendantIdsWithPartners = (
   indexes: FamilyIndexes,
   anchorPersonId: string,
 ) => {
   const descendants = descendantIds(indexes, anchorPersonId)
   const included = new Set(descendants)
+
+  descendants.forEach((descendantId) => {
+    for (const partnerId of indexes.partnersByPerson.get(descendantId) ?? []) {
+      included.add(partnerId)
+    }
+  })
+
+  return included
+}
+
+const extendedDescendantIds = (
+  indexes: FamilyIndexes,
+  anchorPersonId: string,
+) => {
+  const descendants = descendantIds(indexes, anchorPersonId)
+  const included = descendantIdsWithPartners(indexes, anchorPersonId)
   const descendantPartners = new Set<string>()
 
   descendants.forEach((descendantId) => {
@@ -246,9 +264,21 @@ const bloodlineIds = (
 ) => {
   const indexes = familyIndexesFor(document)
   if (mode === 'blood') return bloodRelativeIds(indexes, anchorPersonId)
-  if (mode === 'descendants') return descendantIds(indexes, anchorPersonId)
+  if (mode === 'descendants') return descendantIdsWithPartners(indexes, anchorPersonId)
   if (mode === 'extended-descendants') {
     return extendedDescendantIds(indexes, anchorPersonId)
+  }
+  if (mode === 'direct-ancestors-and-descendants') {
+    return new Set([
+      ...directAncestorIds(indexes, anchorPersonId, false),
+      ...descendantIdsWithPartners(indexes, anchorPersonId),
+    ])
+  }
+  if (mode === 'extended-direct-ancestors-and-descendants') {
+    return new Set([
+      ...directAncestorIds(indexes, anchorPersonId, true),
+      ...extendedDescendantIds(indexes, anchorPersonId),
+    ])
   }
 
   return directAncestorIds(

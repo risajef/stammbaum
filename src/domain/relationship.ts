@@ -414,16 +414,9 @@ export const updateRelationship = (
 
   const currentRelationship = document.relationships[relationshipIndex]
   const nextStatus = changes.status === undefined ? currentRelationship.status : changes.status
-  if (currentRelationship.inferredFrom && nextStatus !== 'inferred') {
-    return {
-      ok: false,
-      error: error(
-        'invalid-status',
-        'Automatisch abgeleitete Beziehungen müssen geschlussfolgert bleiben.',
-        relationshipId,
-      ),
-    }
-  }
+  const isAutomaticRelationship =
+    currentRelationship.origin === 'automatic-inference' || Boolean(currentRelationship.inferredFrom)
+  const isConfirmedAutomaticRelationship = isAutomaticRelationship && nextStatus === 'explicit'
 
   const startDateResult = currentRelationship.type === 'marriage'
     ? marriageStartDate(
@@ -454,8 +447,9 @@ export const updateRelationship = (
       changes.sourceUrl === undefined ? currentRelationship.sourceUrl : changes.sourceUrl,
     comment:
       changes.comment === undefined ? currentRelationship.comment : changes.comment,
-    origin:
-      changes.origin === undefined
+    origin: isConfirmedAutomaticRelationship
+      ? 'manual'
+      : changes.origin === undefined
         ? currentRelationship.origin ?? (currentRelationship.inferredFrom
           ? 'automatic-inference'
           : 'manual')
@@ -472,7 +466,9 @@ export const updateRelationship = (
     ...(currentRelationship.type === 'marriage'
       ? { startDate: startDateResult.value }
       : {}),
-    inferredFrom: currentRelationship.inferredFrom ?? null,
+    inferredFrom: isConfirmedAutomaticRelationship
+      ? null
+      : currentRelationship.inferredFrom ?? null,
   }
 
   return {

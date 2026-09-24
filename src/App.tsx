@@ -4,6 +4,7 @@ import {
   ConnectionMode,
   Controls,
   ReactFlow,
+  useNodes,
   useReactFlow,
   type Connection,
   type NodeChange,
@@ -62,6 +63,10 @@ import OcrSuggestionsPanel, {
   type OcrImportViewState,
 } from './components/OcrSuggestionsPanel'
 import { createBrowserFilePort } from './persistence/file-port'
+import {
+  createFilteredExportDocument,
+  createFilteredExportFileName,
+} from './persistence/filtered-export'
 import { parseFamilyTreeYaml, serializeFamilyTreeYaml } from './persistence/yaml'
 import { readOcrFromBackend } from './ocr/ocr-backend-client'
 import {
@@ -122,6 +127,7 @@ function CenterPersonOnSave({
   onCentered,
 }: CenterPersonOnSaveProps) {
   const { getNode, screenToFlowPosition } = useReactFlow()
+  const nodes = useNodes()
 
   useEffect(() => {
     if (!personId) {
@@ -139,14 +145,18 @@ function CenterPersonOnSave({
       y: surfaceBounds.top + surfaceBounds.height / 2,
     })
     const node = getNode(personId)
-    const nodeWidth = node?.measured?.width ?? node?.width ?? 148
-    const nodeHeight = node?.measured?.height ?? node?.height ?? 88
+    if (!node) {
+      return
+    }
+
+    const nodeWidth = node.measured?.width ?? node.width ?? 148
+    const nodeHeight = node.measured?.height ?? node.height ?? 88
 
     onCentered(personId, {
       x: Math.round(flowCenter.x - nodeWidth / 2),
       y: Math.round(flowCenter.y - nodeHeight / 2),
     })
-  }, [getNode, onCentered, personId, screenToFlowPosition, surfaceRef])
+  }, [getNode, nodes, onCentered, personId, screenToFlowPosition, surfaceRef])
 
   return null
 }
@@ -245,7 +255,10 @@ function App() {
       unfilteredPersonIds,
     ],
   )
-  const viewOptionsKey = JSON.stringify(viewOptions)
+  const viewOptionsKey = JSON.stringify({
+    ...viewOptions,
+    unfilteredPersonIds: [],
+  })
   const previousViewOptionsKey = useRef<string | null>(null)
   const viewChanged = previousViewOptionsKey.current !== null &&
     previousViewOptionsKey.current !== viewOptionsKey
@@ -1042,6 +1055,31 @@ function App() {
     }
   }
 
+  const handleExportFile = async () => {
+    try {
+      const filterAnchor = appliedBloodlineFilter
+        ? document.persons.find((person) => person.id === appliedBloodlineFilter.anchorPersonId)
+        : null
+      const outputFileName = createFilteredExportFileName({
+        mode: appliedBloodlineFilter?.mode ?? null,
+        anchorPerson: filterAnchor,
+        isLocalView,
+        hideLeaves,
+      })
+      await filePort.save(
+        serializeFamilyTreeYaml(createFilteredExportDocument(visibleDocument)),
+        outputFileName,
+      )
+      setWorkflowError(null)
+    } catch (error: unknown) {
+      setWorkflowError(
+        error instanceof Error
+          ? `Der Export konnte nicht gespeichert werden: ${error.message}`
+          : 'Der Export konnte nicht gespeichert werden.',
+      )
+    }
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -1069,6 +1107,9 @@ function App() {
             onClick={handleSaveFile}
           >
             Speichern
+          </button>
+          <button className="toolbar-button" type="button" onClick={handleExportFile}>
+            Exportieren
           </button>
           <span className={`save-state${isDirty ? ' save-state--dirty' : ''}`}>{saveState}</span>
         </div>
@@ -1242,6 +1283,20 @@ function App() {
                   onClick={() => handleBloodlineModeClick('extended-descendants')}
                 >
                   Erweiterte Nachkommen
+                </button>
+                <button
+                  className="view-toggle view-filter-button"
+                  type="button"
+                  onClick={() => handleBloodlineModeClick('direct-ancestors-and-descendants')}
+                >
+                  Direkte Vor und Nachfahren
+                </button>
+                <button
+                  className="view-toggle view-filter-button"
+                  type="button"
+                  onClick={() => handleBloodlineModeClick('extended-direct-ancestors-and-descendants')}
+                >
+                  Erweiterte direkte Vor und Nachfahren
                 </button>
               </div>
               <label className="view-toggle">
