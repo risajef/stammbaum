@@ -123,17 +123,6 @@ describe('relationship domain operations', () => {
       value: { relationships: [{ id: 'marriage-1', origin: 'manual' }] },
     })
 
-    const ocrRelationship = createParentChild(
-      documentWithPeople(),
-      'woman-1',
-      'child-1',
-      { origin: 'ocr-suggestion' },
-      () => 'ocr-parent-child-1',
-    )
-    expect(ocrRelationship).toMatchObject({
-      ok: true,
-      value: { relationships: [{ id: 'ocr-parent-child-1', origin: 'ocr-suggestion' }] },
-    })
   })
 
   it('allows a person to have multiple marriages but rejects duplicates', () => {

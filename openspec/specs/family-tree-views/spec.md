@@ -151,11 +151,11 @@ Jedes kompatible Paar MUSS eine Priorität erhalten und die Treffer MUESSEN aufs
 3. Genau eines der beiden Geburtsdaten fehlt.
 4. Beide Geburtsdaten fehlen.
 
-Bei gleicher Priorität MUSS die Reihenfolge stabil aus der Reihenfolge der Personen im Dokument abgeleitet werden. Die Kandidatenpaare MUESSEN in einem sichtbaren Bereich „Duplikate“ neben der bestehenden Personensuche erscheinen. Jedes Paar MUSS beide Personen und seine Prioritätsreihenfolge erkennen lassen. Gibt es keine kompatiblen Paare, MUSS der Bereich eine verständliche Leeranzeige zeigen.
+Bei gleicher Priorität MUSS die Reihenfolge stabil aus der Reihenfolge der Personen im Dokument abgeleitet werden. Die Kandidatenpaare MUESSEN in einem sichtbaren Bereich „Duplikate“ am Ende des Arbeitsbereichs unterhalb von Stammbaum-Arbeitsfläche und Detailinspektor erscheinen. Jedes Paar MUSS beide Personen und seine Prioritätsreihenfolge erkennen lassen. Gibt es keine kompatiblen Paare, MUSS der Bereich eine verständliche Leeranzeige zeigen.
 
 Ein Klick auf eine der beiden Personen MUSS diese Person auswählen und den zugehörigen Knoten im aktuellen Graphen fokussieren. Die Navigation MUSS in der bearbeitbaren Übersicht und in der Federungsansicht funktionieren. Wenn eine aktive lokale Ansicht, die Blutsverwandtschaftsansicht oder der Leaf-Filter die Zielperson ausblenden würde, MUSS die Anwendung diese widersprechenden Ansichtsfilter vor der Auswahl zurücksetzen oder so anpassen, dass die Zielperson sichtbar wird. Die Navigation MUSS den Stammbaum nicht verändern.
 
-Der Bereich „Duplikate“ MUSS unabhängig vom Bereich „OCR-Vorschläge“ über einen zugänglichen Toggle im eigenen Header ein- und ausgeblendet werden können. Beide Bereiche MÜSSEN standardmäßig geöffnet sein; beim Ausblenden MUSS der jeweilige Inhalt verborgen bleiben, während Header, Titel und Toggle zum Wiedereinblenden sichtbar bleiben. Der Sichtbarkeitszustand DARF weder das Familiendokument, den Dirty-State, den YAML-Export noch den jeweils anderen Bereich verändern.
+Der Bereich „Duplikate“ MUSS über einen zugänglichen Toggle im eigenen Header ein- und ausgeblendet werden können. Er MUSS standardmäßig geöffnet sein; beim Ausblenden MUSS der Inhalt verborgen bleiben, während Header, Titel und Toggle zum Wiedereinblenden sichtbar bleiben. Der Sichtbarkeitszustand DARF weder das Familiendokument, den Dirty-State noch den YAML-Export verändern.
 
 Personenkarten MÜSSEN ihre bestehende Größe, Farbgebung, Statusmarkierungen und fachlich notwendigen Handles behalten. Der Vorname MUSS in einer eigenen sichtbaren Zeile und der Nachname darunter dargestellt werden. Das Geschlechtskürzel sowie die ausgeschriebene Geschlechtsbezeichnung „Mann“ oder „Frau“ DÜRFEN nicht mehr in der Karte erscheinen; die bestehende geschlechtsspezifische Farbgebung bleibt die visuelle Unterscheidung.
 
@@ -251,17 +251,17 @@ Personenkarten MÜSSEN ihre bestehende Größe, Farbgebung, Statusmarkierungen u
 
 #### Scenario: Duplikatbereich kann unabhängig ausgeblendet werden
 
-- **GIVEN** der Bereich „Duplikate“ und der Bereich „OCR-Vorschläge“ sind geöffnet
+- **GIVEN** der Bereich „Duplikate“ ist geöffnet und steht am Ende des Arbeitsbereichs
 - **WHEN** die Benutzerin den Toggle im Header „Duplikate“ betätigt
-- **THEN** wird nur der Inhalt des Duplikatbereichs ausgeblendet, während dessen Header und der OCR-Bereich geöffnet bleiben
+- **THEN** wird nur der Inhalt des Duplikatbereichs ausgeblendet, während dessen Header und die übrige Arbeitsfläche unverändert bleiben
 - **AND** der Toggle ermöglicht das erneute Einblenden des Duplikatinhalts
 
 #### Scenario: OCR-Vorschläge können unabhängig ausgeblendet werden
 
-- **GIVEN** der Bereich „OCR-Vorschläge“ und der Bereich „Duplikate“ sind geöffnet
-- **WHEN** die Benutzerin den Toggle im Header „OCR-Vorschläge“ betätigt
-- **THEN** wird nur der Inhalt des OCR-Bereichs ausgeblendet, während dessen Header und der Duplikatbereich geöffnet bleiben
-- **AND** der Toggle ermöglicht das erneute Einblenden des OCR-Inhalts
+- **GIVEN** die Anwendung wird ohne OCR-Vorschlagsbereich angezeigt
+- **WHEN** die Benutzerin nach einem OCR-Toggle sucht
+- **THEN** wird kein OCR-Bereich und kein OCR-Toggle angeboten
+- **AND** der Duplikatbereich bleibt am Ende des Arbeitsbereichs verfügbar
 
 #### Scenario: Personenkarten zeigen Namen kompakt und ohne Geschlechtslabel
 

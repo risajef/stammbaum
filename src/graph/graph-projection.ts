@@ -894,8 +894,6 @@ const projectRelationship = (
   const comment = relationship.comment?.trim() || undefined
   const edgeColor = selected
     ? selectedEdgeColor
-    : origin === 'ocr-suggestion'
-    ? '#a77b28'
     : isParentChild ? '#385b59' : '#c6654c'
 
   return {

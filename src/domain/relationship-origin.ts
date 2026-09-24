@@ -10,8 +10,6 @@ export const getRelationshipOrigin = (
 
 export const relationshipOriginLabel = (origin: RelationshipOrigin): string => {
   switch (origin) {
-    case 'ocr-suggestion':
-      return 'OCR-Vorschlag'
     case 'automatic-inference':
       return 'Automatische Ableitung'
     case 'manual':

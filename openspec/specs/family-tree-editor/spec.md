@@ -112,7 +112,7 @@ Das System MUST eine gerichtete Eltern-Kind-Beziehung zwischen vorhandenen Perso
 
 ### Requirement: Quellen und Schlussfolgerungsstatus sind Teil jeder Beziehung
 
-Das System MUST jede Beziehung mit dem Status `explizit` oder `geschlussfolgert` speichern. Der Status ist beim Anlegen und spaeteren Bearbeiten aenderbar. Eine Beziehung darf eine einzelne optionale Quellen-URL tragen; eine angegebene Quelle MUST eine gueltige HTTP- oder HTTPS-URL sein. Jede Beziehung MUST außerdem eine Herkunft `manual`, `ocr-suggestion` oder `automatic-inference` tragen. Beim Einlesen älterer schemaVersion-1-Dateien ohne Herkunft MUSS eine Beziehung mit automatischer Herkunft als `automatic-inference`, jede andere als `manual` behandelt werden. Die Herkunft MUSS beim Export erhalten bleiben und in der Arbeitsfläche sowie der Detailansicht sichtbar unterscheidbar sein.
+Das System MUST jede Beziehung mit dem Status `explizit` oder `geschlussfolgert` speichern. Der Status ist beim Anlegen und spaeteren Bearbeiten aenderbar. Eine Beziehung darf eine einzelne optionale Quellen-URL tragen; eine angegebene Quelle MUST eine gueltige HTTP- oder HTTPS-URL sein. Jede Beziehung MUST außerdem eine Herkunft `manual` oder `automatic-inference` tragen. Beim Einlesen älterer schemaVersion-1-Dateien ohne Herkunft MUSS eine Beziehung mit automatischer Herkunft als `automatic-inference`, jede andere als `manual` behandelt werden. Eine ältere Herkunft `ocr-suggestion` MUSS beim Einlesen kompatibel als `manual` normalisiert werden. Die Herkunft MUSS beim Export erhalten bleiben und in der Arbeitsfläche sowie der Detailansicht sichtbar unterscheidbar sein.
 
 #### Scenario: Beziehung mit Quelle speichern
 - **GIVEN** die Benutzerin erstellt eine gueltige Beziehung
@@ -147,6 +147,12 @@ Das System MUST jede Beziehung mit dem Status `explizit` oder `geschlussfolgert`
 - **GIVEN** eine gültige schemaVersion-1-YAML-Datei enthält noch kein Herkunftsfeld
 - **WHEN** die Datei geöffnet wird
 - **THEN** wird sie ohne Fehler geladen und die Beziehung erhält die kompatible Herkunft `manual` oder bei automatischer Herkunft `automatic-inference`
+
+#### Scenario: Alte OCR-Herkunft bleibt kompatibel
+
+- **GIVEN** eine gültige schemaVersion-1-YAML-Datei enthält eine Beziehung mit der früheren Herkunft `ocr-suggestion`
+- **WHEN** die Datei geöffnet wird
+- **THEN** wird sie ohne Fehler geladen und die Beziehung erhält die Herkunft `manual`
 
 ### Requirement: Beziehungen lassen sich direkt in der Arbeitsflaeche bedienen
 

@@ -87,16 +87,12 @@ describe('family tree YAML persistence', () => {
     expect(result).toEqual({ ok: true, value: documentFixture })
   })
 
-  it('round-trips relationship origins and derives compatible origins for legacy files', () => {
+  it('round-trips supported relationship origins and normalises legacy files', () => {
     const documentWithOrigins = {
       ...documentFixture,
       relationships: documentFixture.relationships.map((relationship, index) => ({
         ...relationship,
-        origin: index === 0
-          ? 'manual'
-          : index === 1
-            ? 'ocr-suggestion'
-            : 'automatic-inference',
+        origin: index === 2 ? 'automatic-inference' : 'manual',
       })),
     } as FamilyTreeDocument
 
@@ -118,6 +114,21 @@ describe('family tree YAML persistence', () => {
         ],
       },
     })
+
+    const legacyOcr = parseFamilyTreeYaml(
+      serializeFamilyTreeYaml(documentFixture).replace(
+        '    origin: manual',
+        '    origin: ocr-suggestion',
+      ),
+    )
+
+    expect(legacyOcr.ok).toBe(true)
+    if (legacyOcr.ok) {
+      expect(legacyOcr.value.relationships[0]).toMatchObject({
+        id: 'marriage-1',
+        origin: 'manual',
+      })
+    }
   })
 
   it('round-trips partial dates and normalises legacy numeric years', () => {
@@ -305,18 +316,18 @@ relationships:
     expect(result.ok).toBe(false)
   })
 
-  it('does not export transient open suggestion state but exports accepted document data', () => {
+  it('does not export transient runtime state but exports accepted document data', () => {
     const pendingDocument = {
       ...documentFixture,
-      ocrSuggestions: [{
+      transientSuggestions: [{
         id: 'suggestion-1',
         newPerson: { firstName: 'Lina', lastName: 'Weber' },
       }],
-    } as FamilyTreeDocument & { ocrSuggestions: unknown[] }
+    } as FamilyTreeDocument & { transientSuggestions: unknown[] }
 
     const pendingYaml = serializeFamilyTreeYaml(pendingDocument)
 
-    expect(pendingYaml).not.toContain('ocrSuggestions')
+    expect(pendingYaml).not.toContain('transientSuggestions')
     expect(pendingYaml).not.toContain('suggestion-1')
     expect(pendingYaml).not.toContain('Lina')
 
@@ -343,14 +354,14 @@ relationships:
           toId: 'person-lina',
           status: 'explicit',
           sourceUrl: 'https://review.example/page/7',
-          comment: 'OCR-Begründung',
-          origin: 'ocr-suggestion',
+          comment: 'Manuelle Begründung',
+          origin: 'manual',
         },
       ],
     })
 
-    expect(acceptedYaml).toContain('origin: ocr-suggestion')
+    expect(acceptedYaml).toContain('origin: manual')
     expect(acceptedYaml).toContain('sourceUrl: https://review.example/page/7')
-    expect(acceptedYaml).toContain('comment: OCR-Begründung')
+    expect(acceptedYaml).toContain('comment: Manuelle Begründung')
   })
 })

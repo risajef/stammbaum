@@ -82,7 +82,6 @@ describe('RelationshipInspector', () => {
 
   it.each([
     ['manual', 'Manuell'],
-    ['ocr-suggestion', 'OCR-Vorschlag'],
     ['automatic-inference', 'Automatische Ableitung'],
   ] as const)('shows the %s relationship origin as a visible badge', (origin, label) => {
     render(

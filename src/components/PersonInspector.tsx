@@ -4,7 +4,6 @@ import type { DomainError, Person, PersonDraft } from '../domain/types'
 
 interface PersonInspectorProps {
   person: Person | null
-  initialDraft?: PersonDraft | null
   onSave: (draft: PersonDraft) => DomainError | null | undefined
   onCancel: () => void
   onMerge?: () => void
@@ -34,20 +33,19 @@ const dateFromValue = (value: string): string | null => value.trim() || null
 
 function PersonInspector({
   person,
-  initialDraft = null,
   onSave,
   onCancel,
   onMerge,
   onRemove,
   mergeMode = false,
 }: PersonInspectorProps) {
-  const [values, setValues] = useState(() => valuesFromPerson(person ?? initialDraft))
+  const [values, setValues] = useState(() => valuesFromPerson(person))
   const [error, setError] = useState<DomainError | null>(null)
 
   useEffect(() => {
-    setValues(valuesFromPerson(person ?? initialDraft))
+    setValues(valuesFromPerson(person))
     setError(null)
-  }, [person, initialDraft])
+  }, [person])
 
   const updateValue = (field: keyof PersonFormValues, value: string) => {
     setValues((current) => ({ ...current, [field]: value }))
@@ -64,7 +62,7 @@ function PersonInspector({
       gender: values.gender || null,
       birthYear: dateFromValue(values.birthYear),
       deathYear: dateFromValue(values.deathYear),
-      position: person?.position ?? initialDraft?.position ?? null,
+      position: person?.position ?? null,
       comment: values.comment.trim() || null,
     }
     const saveError = onSave(draft)

@@ -4,7 +4,7 @@ export type RelationshipType = 'marriage' | 'parent-child'
 
 export type RelationshipStatus = 'explicit' | 'inferred'
 
-export type RelationshipOrigin = 'manual' | 'ocr-suggestion' | 'automatic-inference'
+export type RelationshipOrigin = 'manual' | 'automatic-inference'
 
 export type PartialDate = string
 

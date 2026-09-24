@@ -378,7 +378,7 @@ describe('application workbench', () => {
     expect(within(duplicatePanel).getAllByRole('button', { name: 'Clara Weber' })).toHaveLength(2)
   })
 
-  it('can independently collapse and reopen the duplicate and OCR panels', async () => {
+  it('keeps the duplicate panel at the bottom without an OCR panel', async () => {
     stubYamlOpen(duplicatePairsYaml)
 
     render(<App />)
@@ -386,23 +386,22 @@ describe('application workbench', () => {
     await waitFor(() => expect(screen.getByText('Geöffnet: children.yaml')).toBeVisible())
 
     const duplicatePanel = await screen.findByRole('region', { name: 'Duplikate' })
-    const ocrPanel = screen.getByRole('region', { name: 'OCR-Vorschläge' })
+    const canvasPanel = screen.getByRole('region', { name: 'Stammbaum-Arbeitsfläche' })
+    const inspectorPanel = screen.getByRole('complementary', { name: 'Detailinspektor' })
+    const workspaceGrid = canvasPanel.closest('.workspace-grid')
     expect(within(duplicatePanel).getAllByRole('listitem')).toHaveLength(3)
-    expect(within(ocrPanel).getByText('Keine Vorschläge')).toBeVisible()
+    expect(workspaceGrid?.lastElementChild).toBe(duplicatePanel)
+    expect(canvasPanel.compareDocumentPosition(duplicatePanel) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy()
+    expect(inspectorPanel.compareDocumentPosition(duplicatePanel) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy()
+    expect(screen.queryByRole('region', { name: 'OCR-Vorschläge' })).not.toBeInTheDocument()
 
     fireEvent.click(within(duplicatePanel).getByRole('button', { name: 'Duplikate ausblenden' }))
     expect(within(duplicatePanel).queryByRole('list')).not.toBeInTheDocument()
-    expect(within(ocrPanel).getByText('Keine Vorschläge')).toBeVisible()
 
     fireEvent.click(within(duplicatePanel).getByRole('button', { name: 'Duplikate einblenden' }))
     expect(within(duplicatePanel).getAllByRole('listitem')).toHaveLength(3)
-
-    fireEvent.click(within(ocrPanel).getByRole('button', { name: 'OCR-Vorschläge ausblenden' }))
-    expect(within(ocrPanel).queryByText('Keine Vorschläge')).not.toBeInTheDocument()
-    expect(within(duplicatePanel).getAllByRole('listitem')).toHaveLength(3)
-
-    fireEvent.click(within(ocrPanel).getByRole('button', { name: 'OCR-Vorschläge einblenden' }))
-    expect(within(ocrPanel).getByText('Keine Vorschläge')).toBeVisible()
   })
 
   it('navigates from a duplicate pair to a filtered-out person without dirtying the document', async () => {

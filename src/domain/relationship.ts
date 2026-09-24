@@ -106,7 +106,6 @@ const relationshipOptions = (
   const origin = options.origin ?? 'manual'
   if (
     origin !== 'manual' &&
-    origin !== 'ocr-suggestion' &&
     origin !== 'automatic-inference'
   ) {
     return {

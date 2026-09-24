@@ -4,7 +4,12 @@ import { z } from 'zod'
 import { validateFamilyTreeDocument } from '../domain/document-validation'
 import { normalizePartialDate } from '../domain/life-date'
 import { getRelationshipOrigin } from '../domain/relationship-origin'
-import type { DomainError, FamilyTreeDocument, Result } from '../domain/types'
+import type {
+  DomainError,
+  FamilyTreeDocument,
+  RelationshipOrigin,
+  Result,
+} from '../domain/types'
 
 const positionSchema = z
   .object({
@@ -45,7 +50,7 @@ const relationshipSchema = z
     comment: z.string().nullable().optional(),
     inferredFrom: inferenceSchema.nullable().optional(),
     origin: z
-      .enum(['manual', 'ocr-suggestion', 'automatic-inference'])
+      .enum(['manual', 'automatic-inference', 'ocr-suggestion'])
       .nullable()
       .optional(),
   })
@@ -79,6 +84,17 @@ const zodError = (validationError: z.ZodError): DomainError => {
   )
 }
 
+const normaliseRelationshipOrigin = (
+  origin: 'manual' | 'automatic-inference' | 'ocr-suggestion' | null | undefined,
+  inferredFrom: z.infer<typeof inferenceSchema> | null | undefined,
+): RelationshipOrigin => {
+  if (origin === 'ocr-suggestion') {
+    return 'manual'
+  }
+
+  return getRelationshipOrigin({ origin, inferredFrom })
+}
+
 const normaliseDocument = (rawDocument: z.infer<typeof rawDocumentSchema>): FamilyTreeDocument => ({
   schemaVersion: 1,
   persons: rawDocument.persons.map((person) => ({
@@ -100,7 +116,7 @@ const normaliseDocument = (rawDocument: z.infer<typeof rawDocumentSchema>): Fami
       sourceUrl: relationship.sourceUrl ?? null,
       comment: normaliseComment(relationship.comment),
       inferredFrom: relationship.inferredFrom ?? null,
-      origin: getRelationshipOrigin(relationship),
+      origin: normaliseRelationshipOrigin(relationship.origin, relationship.inferredFrom),
     }
   }),
 })

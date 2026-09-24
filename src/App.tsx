@@ -59,26 +59,12 @@ import RelationshipInspector, {
   type RelationshipFormDraft,
 } from './components/RelationshipInspector'
 import ChildGroupInspector from './components/ChildGroupInspector'
-import OcrSuggestionsPanel, {
-  type OcrImportViewState,
-} from './components/OcrSuggestionsPanel'
 import { createBrowserFilePort } from './persistence/file-port'
 import {
   createFilteredExportDocument,
   createFilteredExportFileName,
 } from './persistence/filtered-export'
 import { parseFamilyTreeYaml, serializeFamilyTreeYaml } from './persistence/yaml'
-import { readOcrFromBackend } from './ocr/ocr-backend-client'
-import {
-  detectOcrSuggestions,
-  findOcrPersonMatches,
-  type OcrPersonMatch,
-  type OcrSuggestion,
-} from './ocr/ocr-suggestions'
-import {
-  acceptOcrSuggestion,
-  rejectOcrSuggestion,
-} from './ocr/ocr-suggestion-actions'
 
 import '@xyflow/react/dist/style.css'
 
@@ -92,14 +78,6 @@ interface AppliedBloodlineFilter {
   mode: BloodlineMode
   anchorPersonId: string
 }
-
-const createEmptyOcrImportState = (): OcrImportViewState => ({
-  status: 'idle',
-  backendStatus: 'unknown',
-  runs: [],
-  pages: [],
-  errors: [],
-})
 
 function FitViewOnRequest({ request }: { request: number }) {
   const { fitView } = useReactFlow()
@@ -224,14 +202,6 @@ function App() {
   const [unfilteredPersonIds, setUnfilteredPersonIds] = useState<Set<string>>(
     () => new Set(),
   )
-  const [ocrImportState, setOcrImportState] = useState<OcrImportViewState>(
-    createEmptyOcrImportState,
-  )
-  const [ocrPath, setOcrPath] = useState('')
-  const [ocrSuggestions, setOcrSuggestions] = useState<OcrSuggestion[]>([])
-  const [ocrPersonMatches, setOcrPersonMatches] = useState<OcrPersonMatch[]>([])
-  const [ocrPersonSearchPersonId, setOcrPersonSearchPersonId] = useState<string | null>(null)
-  const [pendingOcrSuggestion, setPendingOcrSuggestion] = useState<OcrSuggestion | null>(null)
   const searchCursorRef = useRef(-1)
   const flowSurfaceRef = useRef<HTMLDivElement>(null)
   const bloodlineMode = appliedBloodlineFilter?.mode ?? null
@@ -327,9 +297,6 @@ function App() {
     selection?.type === 'person'
       ? document.persons.find((person) => person.id === selection.id) ?? null
       : null
-  const visibleOcrPersonMatches = selectedPerson?.id === ocrPersonSearchPersonId
-    ? ocrPersonMatches
-    : []
   const selectedRelationship =
     selection?.type === 'relationship'
       ? document.relationships.find((relationship) => relationship.id === selection.id) ?? null
@@ -422,7 +389,6 @@ function App() {
       return
     }
 
-    setPendingOcrSuggestion(null)
     setIsCreatingPerson(false)
     setConnectionDraft(null)
     setMergeSourceId(selectedPerson.id)
@@ -477,7 +443,6 @@ function App() {
     setPersonToCenter(null)
     setFocusPersonId(null)
     setMergeSourceId(null)
-    setPendingOcrSuggestion(null)
     setIsCreatingPerson(false)
     setConnectionDraft(null)
     setIsDirty(true)
@@ -523,9 +488,6 @@ function App() {
       })
     }
 
-    setPendingOcrSuggestion(null)
-    setOcrPersonMatches([])
-    setOcrPersonSearchPersonId(null)
     setIsCreatingPerson(false)
     setConnectionDraft(null)
     setSelection({ type: 'person', id: personId })
@@ -576,7 +538,6 @@ function App() {
   const handleViewModeChange = (nextMode: ViewMode) => {
     setViewMode(nextMode)
     if (nextMode === 'force') {
-      setPendingOcrSuggestion(null)
       setMergeSourceId(null)
       setIsCreatingPerson(false)
       setConnectionDraft(null)
@@ -632,58 +593,7 @@ function App() {
     setWorkflowError(null)
   }
 
-  const commitOcrSuggestion = (
-    suggestion: OcrSuggestion,
-    draft: PersonDraft,
-  ): DomainError | null => {
-    const result = acceptOcrSuggestion(document, suggestion, undefined, draft)
-    if (!result.ok) {
-      return result.error
-    }
-
-    const acceptedRelationship = result.value.relationships.at(-1)
-    const nextDocument = synchronizeInferredRelationships(result.value)
-    const acceptedRelationshipInNextDocument = acceptedRelationship
-      ? nextDocument.relationships.find((relationship) => relationship.id === acceptedRelationship.id)
-      : undefined
-    const newPerson = result.value.persons.find(
-      (person) => !document.persons.some((existingPerson) => existingPerson.id === person.id),
-    )
-
-    setDocument(nextDocument)
-    if (newPerson) {
-      setUnfilteredPersonIds((current) => {
-        const next = new Set(current)
-        next.add(newPerson.id)
-        return next
-      })
-    }
-    setActiveChildGroups([])
-    setOcrSuggestions((current) => rejectOcrSuggestion(current, suggestion.id))
-    setPendingOcrSuggestion(null)
-    setTemporaryPositions(new Map())
-    setForcePositions(new Map())
-    setFitViewRequest((current) => current + 1)
-    setIsDirty(true)
-    setSaveState('Ungespeichert')
-    setWorkflowError(null)
-    setIsCreatingPerson(false)
-    setConnectionDraft(null)
-    setSelection(
-      acceptedRelationshipInNextDocument
-        ? { type: 'relationship', id: acceptedRelationshipInNextDocument.id }
-        : newPerson
-          ? { type: 'person', id: newPerson.id }
-          : undefined,
-    )
-    return null
-  }
-
   const handlePersonSave = (draft: PersonDraft): DomainError | null => {
-    if (pendingOcrSuggestion) {
-      return commitOcrSuggestion(pendingOcrSuggestion, draft)
-    }
-
     const isNewPerson = !selectedPerson || isCreatingPerson
     const result = selectedPerson && !isCreatingPerson
       ? updatePerson(document, selectedPerson.id, draft)
@@ -760,9 +670,6 @@ function App() {
     setPersonToCenter(null)
     setFocusPersonId(null)
     setMergeSourceId(null)
-    setPendingOcrSuggestion(null)
-    setOcrPersonMatches([])
-    setOcrPersonSearchPersonId(null)
     setIsCreatingPerson(false)
     setConnectionDraft(null)
     if (localAnchorId === selectedPerson.id) {
@@ -776,7 +683,6 @@ function App() {
   }
 
   const handlePersonCancel = () => {
-    setPendingOcrSuggestion(null)
     setMergeSourceId(null)
     setIsCreatingPerson(false)
     setSelection(undefined)
@@ -902,76 +808,10 @@ function App() {
     setSelection(undefined)
   }
 
-  const resetOcrState = () => {
-    setOcrImportState(createEmptyOcrImportState())
-    setOcrSuggestions([])
-    setOcrPersonMatches([])
-    setOcrPersonSearchPersonId(null)
-  }
-
-  const handleOcrImport = async () => {
-    setOcrImportState((current) => ({
-      ...current,
-      status: 'loading',
-      backendStatus: 'connecting',
-      errors: [],
-    }))
-    setOcrSuggestions([])
-    setOcrPersonMatches([])
-    setOcrPersonSearchPersonId(null)
-
-    try {
-      const result = await readOcrFromBackend(ocrPath)
-      setOcrImportState({
-        ...result,
-        status: result.runs.length > 0 ? 'loaded' : 'error',
-        backendStatus: 'connected',
-      })
-      setOcrSuggestions(result.pages.length > 0 ? detectOcrSuggestions(document, result.pages) : [])
-    } catch (error: unknown) {
-      setOcrImportState({
-        ...createEmptyOcrImportState(),
-        status: 'error',
-        backendStatus: error instanceof Error && error.message.includes('nicht erreichbar')
-          ? 'unreachable'
-          : 'connected',
-        errors: [{
-          message: error instanceof Error
-            ? `OCR-Import konnte nicht gestartet werden: ${error.message}`
-            : 'OCR-Import konnte nicht gestartet werden.',
-        }],
-      })
-    }
-  }
-
-  const handleOcrPersonSearch = () => {
-    if (!selectedPerson) {
-      return
-    }
-
-    setOcrPersonSearchPersonId(selectedPerson.id)
-    setOcrPersonMatches(findOcrPersonMatches(selectedPerson, ocrImportState.pages))
-  }
-
-  const handleOcrSuggestionOpen = (suggestion: OcrSuggestion) => {
-    setPendingOcrSuggestion(suggestion)
-    setMergeSourceId(null)
-    setIsCreatingPerson(true)
-    setSelection(undefined)
-    setConnectionDraft(null)
-    setWorkflowError(null)
-  }
-
-  const handleOcrSuggestionReject = (suggestion: OcrSuggestion) => {
-    setOcrSuggestions((current) => rejectOcrSuggestion(current, suggestion.id))
-    setWorkflowError(null)
-  }
-
   const visiblePersonCount = projection.nodes.filter((node) => node.type === 'person').length
   const hasActiveViewFilters = isLocalView || bloodlineMode !== null || hideLeaves
 
   const clearTransientState = () => {
-    setPendingOcrSuggestion(null)
     setSelection(undefined)
     setMergeSourceId(null)
     setIsCreatingPerson(false)
@@ -997,7 +837,6 @@ function App() {
     setFileName('stammbaum.yaml')
     setSaveState('Nicht gespeichert')
     setWorkflowError(null)
-    resetOcrState()
   }
 
   const handleOpenFile = async () => {
@@ -1025,7 +864,6 @@ function App() {
       setFileName(openedFile.name)
       setSaveState(`Geöffnet: ${openedFile.name}`)
       setWorkflowError(null)
-      resetOcrState()
     } catch (error: unknown) {
       setWorkflowError(
         error instanceof Error
@@ -1310,11 +1148,6 @@ function App() {
               </label>
             </div>
           </div>
-          <DuplicatePairsPanel
-            pairs={duplicatePairs}
-            persons={document.persons}
-            onPersonClick={handleDuplicatePersonNavigation}
-          />
           <div
             ref={flowSurfaceRef}
             className={`flow-surface${viewMode === 'force' ? ' flow-surface--force' : ''}`}
@@ -1429,7 +1262,6 @@ function App() {
           ) : isCreatingPerson || selection?.type === 'person' ? (
             <PersonInspector
               person={isCreatingPerson ? null : selectedPerson}
-              initialDraft={pendingOcrSuggestion?.newPerson ?? null}
               onSave={handlePersonSave}
               onCancel={handlePersonCancel}
               onMerge={handleMergeStart}
@@ -1463,20 +1295,10 @@ function App() {
           )}
         </aside>
 
-        <OcrSuggestionsPanel
-          importState={ocrImportState}
-          suggestions={ocrSuggestions}
+        <DuplicatePairsPanel
+          pairs={duplicatePairs}
           persons={document.persons}
-          selectedPerson={selectedPerson}
-          personMatches={visibleOcrPersonMatches}
-          ocrPath={ocrPath}
-          onPathChange={setOcrPath}
-          onImport={handleOcrImport}
-          onSearchPerson={handleOcrPersonSearch}
-          onOpen={handleOcrSuggestionOpen}
-          onReferencePersonClick={handlePersonNavigation}
-          onReject={handleOcrSuggestionReject}
-          readOnly={viewMode === 'force'}
+          onPersonClick={handleDuplicatePersonNavigation}
         />
       </div>
     </main>

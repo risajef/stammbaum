@@ -116,7 +116,6 @@ export const validateFamilyTreeDocument = (
     if (
       relationship.origin !== undefined &&
       relationship.origin !== 'manual' &&
-      relationship.origin !== 'ocr-suggestion' &&
       relationship.origin !== 'automatic-inference'
     ) {
       return error('invalid-origin', 'Die Beziehungsherkunft ist ungültig.', relationship.id)

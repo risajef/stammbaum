@@ -38,42 +38,6 @@ describe('PersonInspector', () => {
     })
   })
 
-  it('prefills an OCR draft, keeps its fields editable, and only saves after submit', () => {
-    const onSave = vi.fn()
-    const onCancel = vi.fn()
-    const initialDraft: PersonDraft = {
-      firstName: 'Lina',
-      lastName: 'Weber',
-      gender: 'woman',
-      birthYear: '1840-05-12',
-      deathYear: null,
-      position: null,
-      comment: 'OCR-Hinweis',
-    }
-
-    render(
-      <PersonInspector
-        person={null}
-        initialDraft={initialDraft}
-        onSave={onSave}
-        onCancel={onCancel}
-      />,
-    )
-
-    expect(screen.getByLabelText('Vorname')).toHaveValue('Lina')
-    expect(screen.getByLabelText('Nachname')).toHaveValue('Weber')
-    expect(screen.getByLabelText('Geburtsdatum')).toHaveValue('1840-05-12')
-    expect(screen.getByLabelText('Kommentar')).toHaveValue('OCR-Hinweis')
-
-    fireEvent.change(screen.getByLabelText('Vorname'), { target: { value: 'Lina-Marie' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Verwerfen' }))
-    expect(onSave).not.toHaveBeenCalled()
-    expect(onCancel).toHaveBeenCalledOnce()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Person speichern' }))
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ firstName: 'Lina-Marie' }))
-  })
-
   it('submits birth and death as partial date strings from single fields', () => {
     const onSave = vi.fn()
 

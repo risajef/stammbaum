@@ -1441,16 +1441,20 @@ describe('family tree graph projection', () => {
     expect(parentChild?.markerEnd).toBeDefined()
   })
 
-  it('projects a visible origin class and data value for every relationship origin', () => {
+  it('projects a visible origin class and data value for supported relationship origins', () => {
     const document: FamilyTreeDocument = {
       ...documentFixture,
       relationships: [
         { ...documentFixture.relationships[0], origin: 'manual' },
-        { ...documentFixture.relationships[1], origin: 'ocr-suggestion' },
         {
           ...documentFixture.relationships[1],
           id: 'parent-child-automatic',
           origin: 'automatic-inference',
+          status: 'inferred',
+          inferredFrom: {
+            rule: 'spouse-parent',
+            sourceRelationshipId: documentFixture.relationships[1].id,
+          },
         },
       ],
     }
@@ -1459,12 +1463,10 @@ describe('family tree graph projection', () => {
 
     expect(projection.edges.map((edge) => edge.className)).toEqual([
       expect.stringContaining('relationship-edge--manual'),
-      expect.stringContaining('relationship-edge--ocr-suggestion'),
       expect.stringContaining('relationship-edge--automatic-inference'),
     ])
     expect(projection.edges.map((edge) => edge.data?.origin)).toEqual([
       'manual',
-      'ocr-suggestion',
       'automatic-inference',
     ])
   })
