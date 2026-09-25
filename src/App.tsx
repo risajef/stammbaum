@@ -17,7 +17,9 @@ import {
   removePerson,
   updatePerson,
 } from './domain/person'
+import { mergeFamilyTrees } from './domain/family-tree-merge'
 import { synchronizeInferredRelationships } from './domain/inference'
+import { validateFamilyTreeDocument } from './domain/document-validation'
 import {
   createMarriage,
   createParentChild,
@@ -873,6 +875,68 @@ function App() {
     }
   }
 
+  const handleMergeFiles = async () => {
+    if (!canReplaceDocument()) {
+      return
+    }
+
+    try {
+      const openedFiles = await filePort.openMany()
+      const sources = []
+
+      for (const openedFile of openedFiles) {
+        const parsed = parseFamilyTreeYaml(openedFile.contents)
+        if (!parsed.ok) {
+          setWorkflowError(
+            `Die Datei "${openedFile.name}" konnte nicht geprüft werden: ${parsed.error.message}`,
+          )
+          return
+        }
+        sources.push({ fileName: openedFile.name, document: parsed.value })
+      }
+
+      const result = mergeFamilyTrees(sources)
+      if (!result.ok) {
+        setWorkflowError(
+          `Die Stammbäume konnten nicht fusioniert werden: ${result.error.message}`,
+        )
+        return
+      }
+
+      const synchronizedDocument = synchronizeInferredRelationships(result.value)
+      const validationError = validateFamilyTreeDocument(synchronizedDocument)
+      if (validationError) {
+        const fileNames = openedFiles.map(({ name }) => name).join(', ')
+        setWorkflowError(
+          `Die fusionierten Stammbäume sind ungültig: ${validationError.message} ` +
+            `Betroffene Quelldateien: ${fileNames}.`,
+        )
+        return
+      }
+
+      setDocument(synchronizedDocument)
+      setUnfilteredPersonIds(new Set())
+      setActiveChildGroups([])
+      setTemporaryPositions(new Map())
+      setForcePositions(new Map())
+      setPersonToCenter(null)
+      setViewMode('overview')
+      setFitViewRequest((current) => current + 1)
+      clearTransientState()
+      resetViewState()
+      setIsDirty(true)
+      setFileName('fusion.yaml')
+      setSaveState('Ungespeichert')
+      setWorkflowError(null)
+    } catch (error: unknown) {
+      setWorkflowError(
+        error instanceof Error
+          ? `Die Stammbäume konnten nicht fusioniert werden: ${error.message}`
+          : 'Die Stammbäume konnten nicht fusioniert werden.',
+      )
+    }
+  }
+
   const handleSaveFile = async () => {
     try {
       const outputFileName = fileName.endsWith('.yaml') || fileName.endsWith('.yml')
@@ -938,6 +1002,9 @@ function App() {
           </button>
           <button className="toolbar-button" type="button" onClick={handleOpenFile}>
             Öffnen
+          </button>
+          <button className="toolbar-button" type="button" onClick={handleMergeFiles}>
+            Stammbäume fusionieren
           </button>
           <button
             className="toolbar-button toolbar-button--accent"
